@@ -1,0 +1,5 @@
+{
+  "name": "GPO Patrol",
+  "description": "An intelligent tool that analyzes Group Policy Object (GPO) data to identify conflicts, overlap and consolidation opportunity's, and generates a PowerShell script to automate this scanning process in your environment.",
+  "requestFramePermissions": []
+}

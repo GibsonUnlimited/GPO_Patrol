@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPO Patrol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+      html, body, #root {
+        height: 100%;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #020617;
+        background-image: radial-gradient(ellipse at top, #1e293b 20%, #020617 100%);
+      }
+      pre, code {
+        font-family: 'Roboto Mono', monospace;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.2s ease-out forwards;
+      }
+      header::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 2rem; /* 32px */
+        background: linear-gradient(to top, #020617, transparent);
+        pointer-events: none;
+        z-index: 7; 
+      }
+      /* --- Header Text Styling --- */
+      .neon-text-stroke {
+        fill: none;
+        stroke: black;
+        stroke-width: 1px;
+        stroke-linejoin: round;
+      }
+      .neon-text {
+        position: relative;
+        /* Darker base color for the text, fill is for SVG <text> */
+        fill: #60a5fa; /* tailwind blue-400 */
+        color: #60a5fa; /* Fallback for non-SVG */
+        /* Tighter, less prominent glow */
+        text-shadow:
+          0 0 2px #fff,
+          0 0 4px #fff,
+          0 0 8px #0ea5e9,
+          0 0 15px #0ea5e9,
+          0 0 20px #0ea5e9;
+      }
+
+      .neon-icon {
+        color: #67e8f9; /* cyan-300 */
+        filter:
+            drop-shadow(0 0 2px #fff)
+            drop-shadow(0 0 5px #fff)
+            drop-shadow(0 0 10px #0ea5e9)
+            drop-shadow(0 0 15px #0ea5e9);
+      }
+
+
+      @keyframes patrol-beam {
+        /* --- Patrol Phase (Simulating walking) --- */
+        0%      { transform: translateX(-150%) translateY(-52%) rotate(-45deg); }
+        12.5%   { transform: translateX(-75%) translateY(-48%) rotate(-20deg); }
+        25%     { transform: translateX(75%) translateY(-53%) rotate(20deg); }
+        37.5%   { transform: translateX(0%) translateY(-47%) rotate(0deg); }
+        50%     { transform: translateX(-150%) translateY(-52%) rotate(-45deg); }
+        
+        /* --- Spotting Phase --- */
+        59%     { transform: translateX(-150%) translateY(-52%) rotate(-45deg); }
+        60%     { transform: translateX(var(--intruder-initial-x)) translateY(calc(-50% + var(--intruder-initial-y))) rotate(10deg); }
+        70%     { transform: translateX(var(--intruder-initial-x)) translateY(calc(-50% + var(--intruder-initial-y))) rotate(10deg); }
+        
+        /* --- Reset Phase (Smooth and visible) --- */
+        90%     { transform: translateX(50%) translateY(-50%) rotate(20deg); }
+        100%    { transform: translateX(-150%) translateY(-52%) rotate(-45deg); }
+      }
+
+      .patrol-light-beam {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(ellipse at center, rgba(204, 251, 255, 0.12) 0%, rgba(204, 251, 255, 0) 70%);
+        border-radius: 50%;
+        filter: blur(20px);
+        animation: patrol-beam 10s ease-in-out infinite;
+        will-change: transform;
+        z-index: 6;
+      }
+      .intruder-face {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 40px;
+        height: 40px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        transform-origin: center;
+        will-change: transform, opacity;
+        animation: peek-a-boo 10s ease-in-out infinite;
+        opacity: 0;
+        z-index: 5;
+        margin-top: -20px;
+        margin-left: -20px;
+      }
+      .intruder-1 {
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBmaWxsPSJibGFjayIgZD0iTTUwIDEwIEMgMzUgMTAsIDI1IDIwLCAyNSAzNSBWIDUwIEggMTUgViA5MCBIIDg1IFYgNTAgSCA3NSBWIDM1IEMgNzUgMjAsIDY1IDEwLCA1MCAxMCBaIE0gMzAgNjUgSCA3MCBWIDg1IEggMzAgWiBNIDM1IDQwIEggNjUgViA1MCBIIDM1IFoiLz48L3N2Zz4=');
+      }
+      .intruder-2 {
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBmaWxsPSJibGFjayIgZD0iTTUwIDEwIEMgMzUgMTAsIDI1IDIwLCAyNSAzNSBWIDgwIEggMjAgTCA1IDcwIFYgNDAgTCAzMCA1MCBWIDM4IEggNzAgViA4NSBIIDMwIFYgOTUgSCA3NSBWIDM1IEMgNzUgMjAsIDY1IDEwLCA1MCAxMCBaIi8+PC9zdmc+');
+      }
+      .intruder-3 {
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBmaWxsPSJibGFjayIgZD0iTTUwIDEwIEMgMzUgMTAsIDI1IDIwLCAyNSAzNSBWIDU1IEggMTUgdiAyMCBoIDE1IHYgMTUgaCAxMCB2IC0xNSBoIDIwIHYgMTUgaCAxMCB2IC0xNSBoIDE1IHYgLTIwIGggLTEwIFYgMzUgQyA3NSAyMCwgNjUgMTAsIDUwIDEwIFogTSAyMCA0MCBMIDUgNDUgSCAyMCBaIE0gODAgNDAgTCA5NSA0NSBIIDgwIFogTSA2MCA1NSBMIDg1IDY1IEwgODUgNTUgWiIvPjwvc3ZnPg==');
+      }
+      @keyframes peek-a-boo {
+        0%, 49.9% { 
+          opacity: 0; 
+          transform: translateX(var(--intruder-initial-x)) translateY(-80px) scale(0.9);
+        }
+        55% { 
+          opacity: 1; 
+          transform: translateX(var(--intruder-initial-x)) translateY(var(--intruder-initial-y)) scale(1);
+        }
+        70% { 
+          opacity: 1; 
+          transform: translateX(var(--intruder-initial-x)) translateY(var(--intruder-initial-y)) scale(1);
+        }
+        75% { 
+          opacity: 0; 
+          transform: translateX(var(--intruder-initial-x)) translateY(-80px) scale(0.9);
+        }
+        100% { opacity: 0; }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
