@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 interface ScriptDisplayProps {
@@ -23,6 +24,13 @@ const TerminalIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
+const DownloadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M12 12.75l-3-3m0 0l3-3m-3 3h7.5" transform="rotate(-90 12 12)" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v13.5" />
+    </svg>
+);
+
 
 export const ScriptDisplay: React.FC<ScriptDisplayProps> = ({ script }) => {
   const [copied, setCopied] = useState(false);
@@ -33,37 +41,55 @@ export const ScriptDisplay: React.FC<ScriptDisplayProps> = ({ script }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownload = () => {
+    const blob = new Blob([script], { type: 'text/powershell' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'GPO_Analysis_Script.ps1';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl h-full flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-700/50">
+    <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center">
-            <TerminalIcon className="w-7 h-7 text-cyan-300 mr-3"/>
-            <h2 className="text-xl font-bold text-cyan-300">Advanced PowerShell Script</h2>
+            <div className="p-3 bg-cyan-900/30 rounded-lg mr-3 border border-cyan-500/20">
+                <TerminalIcon className="w-8 h-8 text-cyan-300"/>
+            </div>
+            <div>
+                 <h2 className="text-xl font-bold text-cyan-300">Analysis Script</h2>
+                 <p className="text-sm text-gray-400">Advanced PowerShell logic generated for this analysis.</p>
+            </div>
         </div>
-        <button
-          onClick={handleCopy}
-          className="flex items-center px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
-        >
-          {copied ? (
-            <>
-              <CheckIcon className="w-5 h-5 mr-2 text-green-400" />
-              Copied!
-            </>
-          ) : (
-            <>
-              <ClipboardIcon className="w-5 h-5 mr-2" />
-              Copy Script
-            </>
-          )}
-        </button>
-      </div>
-      <div className="p-4 flex-grow">
-        <p className="text-sm text-gray-400 mb-4 px-1">This script now includes advanced parameters for targeting specific domains, OUs, and settings. Check the script's comment-based help for usage details.</p>
-        <pre className="bg-black/50 p-4 rounded-md text-sm overflow-x-auto h-[60vh] whitespace-pre-wrap">
-          <code className="language-powershell text-gray-200">
-            {script}
-          </code>
-        </pre>
+        <div className="flex space-x-3">
+             <button
+              onClick={handleDownload}
+              className="flex items-center px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm font-medium transition-colors border border-gray-600 text-gray-200"
+            >
+              <DownloadIcon className="w-5 h-5 mr-2" />
+              Save .ps1
+            </button>
+            <button
+              onClick={handleCopy}
+              className="flex items-center px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-md text-sm font-medium transition-colors text-white shadow-lg shadow-cyan-900/50"
+            >
+              {copied ? (
+                <>
+                  <CheckIcon className="w-5 h-5 mr-2" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <ClipboardIcon className="w-5 h-5 mr-2" />
+                  Copy
+                </>
+              )}
+            </button>
+        </div>
       </div>
     </div>
   );

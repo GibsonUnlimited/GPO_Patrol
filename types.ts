@@ -1,9 +1,11 @@
+
 export interface GpoFinding {
   type: 'Conflict' | 'Overlap';
   setting: string;
   recommendation: string;
   severity?: 'High' | 'Medium';
   resolutionScript?: string;
+  manualSteps?: string;
   policies: Array<{
     name: string;
     value: string;
@@ -16,6 +18,17 @@ export interface GpoConsolidation {
   recommendation: string;
   mergeCandidates: string[];
   reason: string;
+  manualSteps?: string;
+}
+
+export interface GpoSecurityRecommendation {
+  setting: string;
+  currentConfiguration: string;
+  recommendedConfiguration: string;
+  severity: 'Critical' | 'High' | 'Medium' | 'Low';
+  rationale: string;
+  gpoName: string;
+  manualSteps?: string;
 }
 
 export interface GpoDetails {
@@ -23,6 +36,10 @@ export interface GpoDetails {
   linkedOUs: string[];
   securityFiltering?: string[];
   delegation?: string[];
+  configuredSettings?: Array<{
+      name: string;
+      value: string;
+  }>;
 }
 
 export interface AnalysisStats {
@@ -31,6 +48,7 @@ export interface AnalysisStats {
     mediumSeverityConflicts: number;
     overlaps: number;
     consolidationOpportunities: number;
+    securityAlerts: number;
 }
 
 export interface Analysis {
@@ -38,6 +56,7 @@ export interface Analysis {
   stats: AnalysisStats;
   findings: GpoFinding[];
   consolidation?: GpoConsolidation[];
+  securityRecommendations?: GpoSecurityRecommendation[];
   gpoDetails: GpoDetails[];
 }
 
@@ -65,14 +84,33 @@ export interface SourceMapEntry {
   sourceGpoName: string;
 }
 
+export interface SecurityAnalysis {
+  summary: string;
+  securityFiltering: {
+    final: string[];
+    sourceDetails: string[];
+  };
+  delegation: {
+    final: string[];
+    sourceDetails: string[];
+  };
+}
+
 export interface MergeReport {
   summary: string;
   overwrittenSettings: OverwrittenSetting[];
   sourceMap: SourceMapEntry[];
+  securityAnalysis: SecurityAnalysis;
 }
 
 export interface ConsolidationResult {
   gpoXml: string;
   script: string;
   mergeReport: MergeReport;
+}
+
+export interface LogEntry {
+  timestamp: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error' | 'detail';
 }

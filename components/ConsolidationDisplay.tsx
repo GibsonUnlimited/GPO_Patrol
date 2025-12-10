@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { ConsolidationResult, SourceMapEntry } from '../types';
+import type { ConsolidationResult, SourceMapEntry, SecurityAnalysis } from '../types';
 
 interface ConsolidationDisplayProps {
   result: ConsolidationResult;
@@ -37,6 +37,51 @@ const SearchIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
     </svg>
 );
+const ShieldCheckIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+    </svg>
+);
+
+// --- HELPER FUNCTIONS ---
+const formatXml = (xml: string) => {
+    let formatted = '';
+    // Force break on >< to handle minified XML, then use standard newline split
+    const reg = /(>)(<)(\/*)/g;
+    const xmlStr = xml.replace(reg, '$1\r\n$2$3');
+    
+    let pad = 0;
+    
+    // Split by newlines (existing or created)
+    xmlStr.split(/\r?\n/).forEach((node) => {
+        let indent = 0;
+        let padding = '';
+        const trimmed = node.trim();
+        
+        if (!trimmed) return;
+
+        if (trimmed.match(/.+<\/\w[^>]*>$/)) {
+            indent = 0;
+        } else if (trimmed.match(/^<\/\w/)) {
+            if (pad !== 0) {
+                pad -= 1;
+            }
+        } else if (trimmed.match(/^<\w[^>]*[^\/]>.*$/)) {
+            indent = 1;
+        } else {
+            indent = 0;
+        }
+
+        for (let i = 0; i < pad; i++) {
+            padding += '  ';
+        }
+
+        formatted += padding + trimmed + '\r\n';
+        pad += indent;
+    });
+
+    return formatted;
+};
 
 // --- SUB-COMPONENTS ---
 const CodeBlock: React.FC<{ title: string; content: string; language: string; icon: React.ReactNode; }> = ({ title, content, language, icon }) => {
@@ -78,6 +123,69 @@ const CodeBlock: React.FC<{ title: string; content: string; language: string; ic
                         {content}
                     </code>
                 </pre>
+            </div>
+        </div>
+    );
+};
+
+const SecurityAnalysisPanel: React.FC<{ analysis: SecurityAnalysis }> = ({ analysis }) => {
+    return (
+        <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 p-4 mb-8">
+            <div className="flex items-center mb-4">
+                <ShieldCheckIcon className="w-6 h-6 text-green-400 mr-3" />
+                <h3 className="text-lg font-semibold text-gray-200">Security & Delegation Analysis</h3>
+            </div>
+            
+            <div className="mb-6 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+                <p className="text-sm text-gray-300">{analysis.summary}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h4 className="text-sm font-bold text-cyan-300 mb-2 border-b border-cyan-800 pb-1">Security Filtering (Targets)</h4>
+                    <div className="bg-gray-800/30 rounded p-3 mb-3">
+                        <p className="text-xs text-gray-500 mb-2 uppercase">Final Merged Targets</p>
+                        <div className="flex flex-wrap gap-2">
+                            {analysis.securityFiltering.final.map((item, idx) => (
+                                <span key={idx} className="bg-green-900/40 text-green-300 border border-green-800/50 px-2 py-1 rounded text-xs font-mono">
+                                    {item}
+                                </span>
+                            ))}
+                            {analysis.securityFiltering.final.length === 0 && <span className="text-gray-500 text-xs">Authenticated Users (Default)</span>}
+                        </div>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                        <p className="mb-1 font-semibold">Source Details:</p>
+                        <ul className="list-disc list-inside space-y-1">
+                            {analysis.securityFiltering.sourceDetails.map((detail, idx) => (
+                                <li key={idx} className="truncate" title={detail}>{detail}</li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 className="text-sm font-bold text-cyan-300 mb-2 border-b border-cyan-800 pb-1">Delegation (Permissions)</h4>
+                    <div className="bg-gray-800/30 rounded p-3 mb-3">
+                        <p className="text-xs text-gray-500 mb-2 uppercase">Final Merged Permissions</p>
+                        <div className="flex flex-wrap gap-2">
+                            {analysis.delegation.final.map((item, idx) => (
+                                <span key={idx} className="bg-blue-900/40 text-blue-300 border border-blue-800/50 px-2 py-1 rounded text-xs font-mono">
+                                    {item}
+                                </span>
+                            ))}
+                             {analysis.delegation.final.length === 0 && <span className="text-gray-500 text-xs">No special delegation found</span>}
+                        </div>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                        <p className="mb-1 font-semibold">Source Details:</p>
+                         <ul className="list-disc list-inside space-y-1">
+                            {analysis.delegation.sourceDetails.map((detail, idx) => (
+                                <li key={idx} className="truncate" title={detail}>{detail}</li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -126,6 +234,8 @@ export const ConsolidationDisplay: React.FC<ConsolidationDisplayProps> = ({ resu
     const { gpoXml, script, mergeReport } = result;
     const hasOverwrittenSettings = mergeReport.overwrittenSettings.length > 0;
 
+    const formattedXml = useMemo(() => formatXml(gpoXml), [gpoXml]);
+
     return (
         <div className="space-y-8">
             <div className="text-center">
@@ -143,6 +253,10 @@ export const ConsolidationDisplay: React.FC<ConsolidationDisplayProps> = ({ resu
                     <p className="font-medium text-gray-200 flex items-center"><InfoIcon className="w-5 h-5 mr-2 text-cyan-400" /> Executive Summary</p>
                     <p>{mergeReport.summary}</p>
                 </div>
+
+                {mergeReport.securityAnalysis && (
+                    <SecurityAnalysisPanel analysis={mergeReport.securityAnalysis} />
+                )}
 
                 {hasOverwrittenSettings && (
                     <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 p-4">
@@ -190,7 +304,7 @@ export const ConsolidationDisplay: React.FC<ConsolidationDisplayProps> = ({ resu
                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <CodeBlock 
                         title="Consolidated GPO Report"
-                        content={gpoXml}
+                        content={formattedXml}
                         language="xml"
                         icon={<CodeIcon className="w-7 h-7 text-cyan-300 mr-3"/>}
                     />

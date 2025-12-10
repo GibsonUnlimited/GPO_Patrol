@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 
 // --- ICONS ---
 const ClipboardIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -23,7 +24,7 @@ const CodeBlockWithCopy: React.FC<{ script: string }> = ({ script }) => {
 
   return (
     <div className="relative group">
-      <pre className="bg-gray-900/70 p-3 rounded-md text-sm overflow-x-auto whitespace-pre-wrap font-mono border border-gray-700">
+      <pre className="bg-gray-900/70 p-3 rounded-md text-sm overflow-x-auto whitespace-pre-wrap font-mono border border-gray-700 max-h-[400px]">
         <code className="language-powershell text-gray-200">
           {script}
         </code>
@@ -102,7 +103,7 @@ Write-Host "All GPO reports exported to '$FolderPath'" -ForegroundColor Green`
         code: `# Exports reports for all GPOs linked to a specific OU.
 param(
     [Parameter(Mandatory=$true)]
-    [string]$OUPath, # Example: "OU=Users,DC=corp,DC=domain,DC=com"
+    [string]$OUPath, # Example: "OU=Users,DC=corp,DC=domain,DC=domain,DC=com"
 
     [Parameter(Mandatory=$true)]
     [string]$FolderPath # Example: "C:\\GPOReports\\OU_Exports"
@@ -130,9 +131,23 @@ try {
 interface ScriptsModalProps {
     isOpen: boolean;
     onClose: () => void;
+    generatedScript?: string;
 }
 
-export const ScriptsModal: React.FC<ScriptsModalProps> = ({ isOpen, onClose }) => {
+export const ScriptsModal: React.FC<ScriptsModalProps> = ({ isOpen, onClose, generatedScript }) => {
+    
+    const displayScripts = useMemo(() => {
+        const list = [...scripts];
+        if (generatedScript) {
+            list.unshift({
+                title: 'Generated Analysis Script (Custom)',
+                description: 'This script was generated based on your specific analysis requirements. It includes targeted scanning logic and conflict checking.',
+                code: generatedScript
+            });
+        }
+        return list;
+    }, [generatedScript]);
+    
     if (!isOpen) return null;
 
     return (
@@ -144,14 +159,19 @@ export const ScriptsModal: React.FC<ScriptsModalProps> = ({ isOpen, onClose }) =
             aria-labelledby="scripts-modal-title"
         >
             <div 
-                className="bg-gray-900/50 backdrop-filter backdrop-blur-2xl rounded-xl border border-white/10 shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+                className="bg-gray-900/80 backdrop-filter backdrop-blur-2xl rounded-xl border border-white/10 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex justify-between items-center p-4 border-b border-white/10 sticky top-0 bg-gray-900/50">
-                    <h2 id="scripts-modal-title" className="text-xl font-bold text-cyan-300">GPO Export Helper Scripts</h2>
+                <div className="flex justify-between items-center p-6 border-b border-white/10 sticky top-0 bg-gray-900/50 z-10">
+                    <div>
+                        <h2 id="scripts-modal-title" className="text-2xl font-bold text-cyan-300">
+                            PowerShell Scripts & Tools
+                        </h2>
+                        <p className="text-sm text-gray-400 mt-1">Use these scripts to export GPOs or automate the analysis process.</p>
+                    </div>
                     <button 
                         onClick={onClose} 
-                        className="text-gray-400 hover:text-white p-1 rounded-full"
+                        className="text-gray-400 hover:text-white p-1 rounded-full transition-colors"
                         aria-label="Close"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -160,18 +180,25 @@ export const ScriptsModal: React.FC<ScriptsModalProps> = ({ isOpen, onClose }) =
                     </button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-8">
-                    {scripts.map((script, index) => (
-                        <div key={index}>
-                            <h3 className="text-lg font-semibold text-gray-100">{script.title}</h3>
-                            <p className="text-sm text-gray-400 mt-1 mb-3">{script.description}</p>
+                    {displayScripts.map((script, index) => (
+                        <div key={index} className="bg-black/20 rounded-lg p-4 border border-white/5">
+                            <div className="flex items-center mb-2">
+                                <h3 className="text-lg font-semibold text-gray-100">{script.title}</h3>
+                                {generatedScript && index === 0 && (
+                                    <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                        Latest Generated
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-sm text-gray-400 mb-4">{script.description}</p>
                             <CodeBlockWithCopy script={script.code} />
                         </div>
                     ))}
                 </div>
-                 <div className="p-4 border-t border-white/10 sticky bottom-0 bg-gray-900/50 text-right">
+                 <div className="p-4 border-t border-white/10 sticky bottom-0 bg-gray-900/90 text-right rounded-b-xl">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-md transition-colors"
+                        className="px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-md transition-colors shadow-lg shadow-cyan-900/20"
                     >
                         Close
                     </button>

@@ -73,49 +73,58 @@ export const GpoOneToAllInputForm: React.FC<GpoOneToAllInputFormProps> = ({ onGe
         alert("Please provide the Base GPO report.");
         return;
     }
-    if (comparisonGpos.length < 1) {
-        alert("Please provide at least one comparison GPO report.");
-        return;
-    }
+    // We allow 0 comparison GPOs if the user just wants to generate the 1-to-All scanning script.
     onGenerate({ baseGpo, comparisonGpos });
   };
   
   const isSizeExceeded = totalSize > MAX_SIZE_BYTES;
   const sizeInMb = (totalSize / (1024 * 1024)).toFixed(2);
   const maxSizeInMb = (MAX_SIZE_BYTES / (1024 * 1024)).toFixed(1);
+  
+  const hasComparisons = comparisonInputs.some(input => input.content.trim() !== '');
 
   return (
     <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-6 h-full flex flex-col">
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-cyan-300">Provide Reports for 1-to-All Comparison</h2>
+        <h2 className="text-xl font-bold text-cyan-300">1-to-All Analysis & Script Generator</h2>
         <p className="text-gray-400 text-sm">
-            Provide a "Base" GPO, then add "Comparison" reports. You can paste content or drag & drop files.
+            Provide a "Base" GPO to generate a <strong>forest-wide scanning script</strong>. 
+            Optionally add "Comparison" reports to immediately test analysis logic against the Base GPO.
         </p>
       </div>
       <form onSubmit={handleSubmit} className="flex-grow flex flex-col space-y-4">
         <div className="space-y-6 flex-grow">
           {/* Base GPO Input */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Base GPO Report</label>
-            <textarea
-              value={baseGpo}
-              onChange={(e) => setBaseGpo(e.target.value)}
-              onDragOver={handleDragOver}
-              onDragEnter={() => setBaseDragOver(true)}
-              onDragLeave={() => setBaseDragOver(false)}
-              onDrop={(e) => {
-                  handleDrop(e, setBaseGpo);
-                  setBaseDragOver(false);
-              }}
-              placeholder={`Paste BASE GPO content, or drag & drop a file here...`}
-              className={`w-full p-3 bg-gray-900 border-2 rounded-md text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200 text-sm font-mono ${
-                  baseDragOver ? 'border-cyan-500 ring-2 ring-cyan-500/50' : 'border-cyan-600/50'
-              }`}
-              rows={8}
-              disabled={isLoading}
-              aria-label="Base GPO Report Content"
-              required
-            />
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+                Base GPO Report <span className="text-cyan-400 text-xs">(Required for Script Generation)</span>
+            </label>
+            <div className={`relative rounded-md ${baseDragOver ? 'ring-2 ring-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.3)]' : ''}`}>
+                <textarea
+                  value={baseGpo}
+                  onChange={(e) => setBaseGpo(e.target.value)}
+                  onDragOver={handleDragOver}
+                  onDragEnter={() => setBaseDragOver(true)}
+                  onDragLeave={() => setBaseDragOver(false)}
+                  onDrop={(e) => {
+                      handleDrop(e, setBaseGpo);
+                      setBaseDragOver(false);
+                  }}
+                  placeholder={baseDragOver ? "Drop file here!" : "Paste BASE GPO content, or drag & drop a file here..."}
+                  className={`w-full p-3 bg-gray-900 border-2 rounded-md text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200 text-sm font-mono ${
+                      baseDragOver ? 'border-cyan-500 bg-gray-800' : 'border-cyan-600/50'
+                  }`}
+                  rows={8}
+                  disabled={isLoading}
+                  aria-label="Base GPO Report Content"
+                  required
+                />
+                {baseDragOver && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-cyan-900/20 pointer-events-none rounded-md">
+                        <span className="text-cyan-300 font-bold">Drop Base GPO Here</span>
+                    </div>
+                )}
+            </div>
           </div>
           
           <hr className="border-gray-600"/>
@@ -123,7 +132,7 @@ export const GpoOneToAllInputForm: React.FC<GpoOneToAllInputFormProps> = ({ onGe
           {/* Comparison GPO Inputs */}
           {comparisonInputs.map((input, index) => (
             <div key={input.id} className="relative">
-              <label className="block text-sm font-medium text-gray-300 mb-2">Comparison GPO Report #{index + 1}</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Comparison GPO Report #{index + 1} (Optional)</label>
               <textarea
                 value={input.content}
                 onChange={(e) => handleComparisonInputChange(input.id, e.target.value)}
@@ -186,7 +195,7 @@ export const GpoOneToAllInputForm: React.FC<GpoOneToAllInputFormProps> = ({ onGe
           disabled={isLoading || isSizeExceeded}
           className="mt-2 w-full inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-cyan-600 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all duration-200"
         >
-          {isLoading ? 'Analyzing...' : 'Generate Analysis & Script'}
+          {isLoading ? 'Processing...' : hasComparisons ? 'Analyze & Generate Script' : 'Generate Scanning Script Only'}
         </button>
       </form>
     </div>

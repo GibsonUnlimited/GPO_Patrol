@@ -1,10 +1,10 @@
 
-
 import React, { useState } from 'react';
-import type { Analysis, GpoFinding } from '../types';
+import type { Analysis, GpoFinding, GpoSecurityRecommendation } from '../types';
 
 interface ReportToolbarProps {
     analysis: Analysis;
+    script?: string;
     onSaveSession: () => void;
     onClearSession: () => void;
 }
@@ -42,17 +42,46 @@ const PdfIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
     </svg>
 );
+const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+    </svg>
+);
+const CodeBracketIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+    </svg>
+);
 
 
 
-export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSession, onClearSession }) => {
+export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, script, onSaveSession, onClearSession }) => {
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+    const [showExportDropdown, setShowExportDropdown] = useState(false);
     const hasConsolidation = analysis.consolidation && analysis.consolidation.length > 0;
+    const hasSecurity = analysis.securityRecommendations && analysis.securityRecommendations.length > 0;
 
     const handleSave = () => {
         onSaveSession();
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
+    };
+
+    const handleExportSessionJson = () => {
+        const sessionData = {
+            analysis: analysis,
+            script: script || ''
+        };
+        const jsonString = JSON.stringify(sessionData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `GPO_Patrol_Session_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     const handleExportDetailedFindingsCsv = () => {
@@ -70,7 +99,7 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
                 const gpoDetails = analysis.gpoDetails.find(d => d.name === policy.name);
                 const linkedOUs = gpoDetails ? gpoDetails.linkedOUs.join('; ') : '';
 
-                const escapeCsvField = (field: string | undefined | null) => `"${(field || '').replace(/"/g, '""')}"`;
+                const escapeCsvField = (field: any) => `"${String(field || '').replace(/"/g, '""')}"`;
     
                 const row = [
                     findingId,
@@ -88,6 +117,26 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
                 csvContent += row + "\r\n";
             });
         });
+        
+        // Append Security Recommendations
+        if (hasSecurity) {
+            analysis.securityRecommendations?.forEach((rec, index) => {
+                 const row = [
+                    `SEC-${index + 1}`,
+                    "Security Recommendation",
+                    rec.severity,
+                    rec.setting,
+                    rec.rationale,
+                    "", // No script in this CSV format usually
+                    rec.gpoName,
+                    "Current: " + rec.currentConfiguration,
+                    "Recommended: " + rec.recommendedConfiguration,
+                    "N/A",
+                    ""
+                 ].map(f => `"${String(f || '').replace(/"/g, '""')}"`).join(',');
+                 csvContent += row + "\r\n";
+            });
+        }
     
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -162,7 +211,7 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
                 docInstance.setPage(i);
                 docInstance.setFontSize(9);
                 docInstance.setTextColor(150);
-                docInstance.text('GPO Analysis Report', pageMargin, 10);
+                docInstance.text('GPO Patrol - Analysis Report', pageMargin, 10);
                 docInstance.text(`Page ${i} of ${pageCount}`, pageWidth - pageMargin, 10, { align: 'right' });
                 doc.setFont('helvetica', 'normal'); // Reset font for content
             }
@@ -200,10 +249,11 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
         checkPageBreak(60);
         doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
-        doc.text("At-a-Glance Statistics", pageMargin, yPos);
+        doc.text("Analysis Statistics", pageMargin, yPos);
         yPos += 10;
         const statsData = [
             ['Total GPOs Analyzed', analysis.stats.totalGpos],
+            ['Security Recommendations', analysis.stats.securityAlerts || 0],
             ['High-Severity Conflicts', analysis.stats.highSeverityConflicts],
             ['Medium-Severity Conflicts', analysis.stats.mediumSeverityConflicts],
             ['Overlaps Identified', analysis.stats.overlaps],
@@ -221,25 +271,121 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
                 }
             }
         });
+        yPos = (doc as any).lastAutoTable.finalY + 15;
 
-        // --- ANALYZED GPOs ---
+        // --- SECURITY RECOMMENDATIONS ---
+        if (hasSecurity) {
+            doc.addPage();
+            yPos = pageMargin;
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(220, 38, 38); // Red
+            doc.text("Security Posture Recommendations", pageMargin, yPos);
+            yPos += 12;
+
+            analysis.securityRecommendations!.forEach(rec => {
+                const settingLines = doc.splitTextToSize(rec.setting, contentWidth);
+                const rationaleLines = doc.splitTextToSize(`Rationale: ${rec.rationale}`, contentWidth);
+                const spaceNeeded = settingLines.length * 5 + rationaleLines.length * 5 + 40;
+                
+                checkPageBreak(spaceNeeded);
+
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(40);
+                doc.text(settingLines, pageMargin, yPos);
+                yPos += settingLines.length * 5 + 2;
+
+                const severityColor = rec.severity === 'Critical' ? [220, 38, 38] : rec.severity === 'High' ? [234, 88, 12] : [202, 138, 4];
+                doc.setFontSize(10);
+                doc.setTextColor(severityColor[0], severityColor[1], severityColor[2]);
+                doc.text(`Severity: ${rec.severity} | Found in: ${rec.gpoName}`, pageMargin, yPos);
+                yPos += 5;
+
+                doc.setTextColor(80);
+                doc.setFont('helvetica', 'normal');
+                doc.text(rationaleLines, pageMargin, yPos);
+                yPos += rationaleLines.length * 5 + 3;
+
+                // Comparison Table
+                (doc as any).autoTable({
+                    startY: yPos,
+                    head: [['Current Configuration', 'Recommended Baseline']],
+                    body: [[rec.currentConfiguration, rec.recommendedConfiguration]],
+                    theme: 'grid',
+                    headStyles: { fillColor: [74, 85, 104] },
+                    styles: { textColor: [200, 0, 0] }, // Default red for bad config
+                    columnStyles: { 1: { textColor: [0, 150, 0] } }, // Green for good config
+                    margin: { left: pageMargin, right: pageMargin },
+                });
+                yPos = (doc as any).lastAutoTable.finalY + 10;
+            });
+        }
+
+        // --- DETAILED GPO INVENTORY (Data Friendly) ---
         doc.addPage();
         yPos = pageMargin;
         doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
-        doc.text("Analyzed GPOs and Links", pageMargin, yPos);
+        doc.setTextColor(0);
+        doc.text("Detailed GPO Inventory", pageMargin, yPos);
         yPos += 10;
-        const gpoDetailsBody = analysis.gpoDetails.map(gpo => {
-            const ouLinks = gpo.linkedOUs.length > 0 ? gpo.linkedOUs.join('\n') : 'No links found';
-            return [gpo.name, ouLinks];
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text("This section provides critical data for every analyzed GPO, including links, security, and delegation.", pageMargin, yPos);
+        yPos += 10;
+
+        analysis.gpoDetails.forEach((gpo) => {
+            checkPageBreak(60);
+            
+            // Title Background
+            doc.setFillColor(240, 240, 240);
+            doc.rect(pageMargin, yPos - 6, contentWidth, 10, 'F');
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0, 0, 0);
+            doc.text(gpo.name, pageMargin + 2, yPos);
+            yPos += 8;
+
+            // Determine status (Conflicts/Overlaps)
+            const conflicts = analysis.findings.filter(f => f.type === 'Conflict' && f.policies.some(p => p.name === gpo.name));
+            const overlaps = analysis.findings.filter(f => f.type === 'Overlap' && f.policies.some(p => p.name === gpo.name));
+            const mergeCandidate = analysis.consolidation?.some(c => c.mergeCandidates.includes(gpo.name));
+            
+            const statusLines = [];
+            if (conflicts.length) statusLines.push(`CONFLICTS: ${conflicts.length} settings`);
+            if (overlaps.length) statusLines.push(`OVERLAPS: ${overlaps.length} settings`);
+            if (mergeCandidate) statusLines.push("MERGE CANDIDATE");
+            if (statusLines.length === 0) statusLines.push("Clean (No issues found)");
+
+            // Metadata Table
+            const metaBody = [
+                ['Status', statusLines.join(' | ')],
+                ['Linked OUs', gpo.linkedOUs.length ? gpo.linkedOUs.join('\n') : 'Not Linked'],
+                ['Security Filtering', gpo.securityFiltering && gpo.securityFiltering.length ? gpo.securityFiltering.join(', ') : 'Authenticated Users'],
+                ['Delegation', gpo.delegation && gpo.delegation.length ? gpo.delegation.join('\n') : 'Default']
+            ];
+
+            (doc as any).autoTable({
+                startY: yPos,
+                body: metaBody,
+                theme: 'plain',
+                styles: { fontSize: 10, cellPadding: 1.5 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 40 },
+                    1: { cellWidth: 'auto' }
+                },
+                didParseCell: (data: any) => {
+                    // Highlight Conflict status row
+                    if (data.row.index === 0 && data.column.index === 1) {
+                        if (conflicts.length > 0) data.cell.styles.textColor = [220, 38, 38]; // Red
+                        else if (overlaps.length > 0) data.cell.styles.textColor = [217, 119, 6]; // Orange
+                    }
+                }
+            });
+            yPos = (doc as any).lastAutoTable.finalY + 8;
         });
-        (doc as any).autoTable({
-            startY: yPos,
-            head: [['GPO Name', 'Linked OUs']],
-            body: gpoDetailsBody,
-            theme: 'striped',
-            headStyles: { fillColor: [74, 85, 104] },
-        });
+
 
         // --- CONSOLIDATION SECTION ---
         if (hasConsolidation) {
@@ -355,7 +501,7 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
                     headStyles: { fillColor: color },
                     margin: { left: pageMargin, right: pageMargin },
                     didDrawCell: (data: any) => {
-                        if (data.section === 'body' && tableBodyData[data.row.index].isWinning) {
+                        if (data.section === 'body' && tableBodyData[data.row.index]?.isWinning) {
                             doc.setFillColor(220, 255, 220); // light green
                             doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
                             doc.setTextColor(0);
@@ -406,7 +552,7 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
         <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-3 flex flex-wrap justify-between items-center gap-4">
             <h2 className="text-lg font-bold text-gray-200">Analysis Report & Actions</h2>
             <div className="flex items-center space-x-2 flex-wrap gap-2">
-                 <button onClick={onClearSession} title="Clear saved session data" className="p-2 text-gray-400 hover:text-red-400 rounded-md hover:bg-gray-700 transition-colors">
+                 <button onClick={onClearSession} title="Clear saved session data from Browser Storage" className="p-2 text-gray-400 hover:text-red-400 rounded-md hover:bg-gray-700 transition-colors">
                     <TrashIcon className="w-5 h-5" />
                  </button>
                 <button 
@@ -419,14 +565,70 @@ export const ReportToolbar: React.FC<ReportToolbarProps> = ({ analysis, onSaveSe
                     }`}
                 >
                     {saveStatus === 'saved' ? (
-                        <><CheckIcon className="w-5 h-5 mr-2" /> Saved!</>
+                        <><CheckIcon className="w-5 h-5 mr-2" /> Quick Saved!</>
                     ) : (
-                        <><SaveIcon className="w-5 h-5 mr-2" /> Save Results</>
+                        <><SaveIcon className="w-5 h-5 mr-2" /> Quick Save</>
                     )}
                 </button>
-                 <button onClick={handleExportFullReportCsv} className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-cyan-600 hover:bg-cyan-700 text-white transition-colors">
-                    <CsvIcon className="w-5 h-5 mr-2" /> Export Full Report (CSV)
-                </button>
+                
+                {/* Export Dropdown */}
+                <div className="relative">
+                    <button 
+                        onClick={() => setShowExportDropdown(!showExportDropdown)} 
+                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-cyan-600 hover:bg-cyan-700 text-white transition-colors"
+                    >
+                        <CsvIcon className="w-5 h-5 mr-2" /> 
+                        Export Data 
+                        <ChevronDownIcon className="w-4 h-4 ml-1" />
+                    </button>
+                    
+                    {showExportDropdown && (
+                        <>
+                            <div className="fixed inset-0 z-30" onClick={() => setShowExportDropdown(false)}></div>
+                            <div className="absolute right-0 mt-2 w-64 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-40 border border-gray-700 overflow-hidden">
+                                <div className="py-1" role="menu" aria-orientation="vertical">
+                                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-900/50">
+                                        Session Backup
+                                    </div>
+                                    <button
+                                        onClick={() => { handleExportSessionJson(); setShowExportDropdown(false); }}
+                                        className="block w-full text-left px-4 py-2 text-sm text-cyan-300 hover:bg-gray-700 hover:text-cyan-200 transition-colors"
+                                    >
+                                        <div className="flex items-center">
+                                            <CodeBracketIcon className="w-4 h-4 mr-2" />
+                                            Export Session (.json)
+                                        </div>
+                                    </button>
+
+                                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-900/50 mt-1">
+                                        CSV Reports
+                                    </div>
+                                    <button
+                                        onClick={() => { handleExportFullReportCsv(); setShowExportDropdown(false); }}
+                                        className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                                    >
+                                        Full Report (All Findings)
+                                    </button>
+                                    <button
+                                        onClick={() => { handleExportDetailedFindingsCsv(); setShowExportDropdown(false); }}
+                                        className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                                    >
+                                        Detailed Findings Only
+                                    </button>
+                                    {hasConsolidation && (
+                                        <button
+                                            onClick={() => { handleExportConsolidationCsv(); setShowExportDropdown(false); }}
+                                            className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                                        >
+                                            Consolidation Report Only
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
                  <button onClick={handleExportPdf} className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-gray-700 hover:bg-gray-600 text-gray-200 transition-colors">
                     <PdfIcon className="w-5 h-5 mr-2" /> Export PDF
                 </button>
