@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import type { GpoFinding } from '../types';
 
@@ -191,7 +192,9 @@ export const RelationshipMatrix: React.FC<RelationshipMatrixProps> = ({ findings
 
                                 // Interaction State
                                 const isHovered = hoveredLink === link;
+                                // Is this link connected to the currently hovered node?
                                 const isNodeRelated = hoveredNode === link.source || hoveredNode === link.target;
+                                
                                 const isDimmed = (hoveredNode || hoveredLink) && !isHovered && !isNodeRelated;
 
                                 // Determine Color
@@ -226,7 +229,7 @@ export const RelationshipMatrix: React.FC<RelationshipMatrixProps> = ({ findings
                                             fill="none"
                                             stroke={strokeColor}
                                             strokeWidth={activeStrokeWidth}
-                                            strokeOpacity={isDimmed ? 0.1 : (isHovered || isNodeRelated ? 1 : 0.4)}
+                                            strokeOpacity={isDimmed ? 0.05 : (isHovered || isNodeRelated ? 1 : 0.3)}
                                             onMouseEnter={() => setHoveredLink(link)}
                                             onMouseLeave={() => setHoveredLink(null)}
                                             style={{ transition: 'stroke-opacity 0.2s, stroke-width 0.2s, stroke 0.2s' }}
@@ -247,8 +250,16 @@ export const RelationshipMatrix: React.FC<RelationshipMatrixProps> = ({ findings
                             {/* NODES */}
                             {nodes.map((node) => {
                                 const isHovered = hoveredNode === node.id;
-                                const isRelated = hoveredLink && (hoveredLink.source === node.id || hoveredLink.target === node.id);
-                                const isDimmed = (hoveredNode || hoveredLink) && !isHovered && !isRelated;
+                                // Is this node part of the hovered link?
+                                const isLinkEndpoint = hoveredLink && (hoveredLink.source === node.id || hoveredLink.target === node.id);
+                                // Is this node connected to the currently hovered node?
+                                const isNeighbor = hoveredNode && links.some(l => 
+                                    (l.source === hoveredNode && l.target === node.id) || 
+                                    (l.target === hoveredNode && l.source === node.id)
+                                );
+
+                                const isHighlight = isHovered || isLinkEndpoint || isNeighbor;
+                                const isDimmed = (hoveredNode || hoveredLink) && !isHighlight;
 
                                 // Text Anchor Logic based on angle to prevent text overlapping the graph
                                 let textAnchor: "start" | "end" | "middle" = "middle";
@@ -267,21 +278,21 @@ export const RelationshipMatrix: React.FC<RelationshipMatrixProps> = ({ findings
                                 dy = 5; // slight vertical center correction
 
                                 // Enhanced Visual Properties for Active Nodes
-                                const radius = isHovered || isRelated ? 8 : 6;
-                                const fill = isHovered || isRelated ? "#22d3ee" : "#06b6d4"; // lighter cyan on active
-                                const strokeWidth = isHovered || isRelated ? 3 : 2;
-                                const textFill = isHovered || isRelated ? "#fff" : "#94a3b8";
-                                const textWeight = isHovered || isRelated ? "bold" : "normal";
+                                const radius = isHighlight ? 8 : 6;
+                                const fill = isHighlight ? "#22d3ee" : "#06b6d4"; // lighter cyan on active
+                                const strokeWidth = isHighlight ? 3 : 2;
+                                const textFill = isHighlight ? "#fff" : "#94a3b8";
+                                const textWeight = isHighlight ? "bold" : "normal";
 
                                 return (
                                     <g 
                                         key={node.id} 
-                                        style={{ opacity: isDimmed ? 0.2 : 1, transition: 'opacity 0.2s' }}
+                                        style={{ opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.2s' }}
                                         onMouseEnter={() => setHoveredNode(node.id)}
                                         onMouseLeave={() => setHoveredNode(null)}
                                         className="cursor-pointer"
                                     >
-                                        {(isHovered || isRelated) && (
+                                        {(isHighlight) && (
                                             <circle 
                                                 cx={node.x} 
                                                 cy={node.y} 
@@ -298,7 +309,7 @@ export const RelationshipMatrix: React.FC<RelationshipMatrixProps> = ({ findings
                                             fill={fill}
                                             stroke="#fff"
                                             strokeWidth={strokeWidth}
-                                            filter={isHovered || isRelated ? "url(#glow)" : ""}
+                                            filter={isHighlight ? "url(#glow)" : ""}
                                             style={{ transition: 'r 0.2s, fill 0.2s, stroke-width 0.2s' }}
                                         />
                                         <text
@@ -338,10 +349,19 @@ export const RelationshipMatrix: React.FC<RelationshipMatrixProps> = ({ findings
                                 <p className="text-cyan-400 font-bold font-mono text-sm break-words">{hoveredLink.target}</p>
                             </div>
                             
-                            <div className="flex justify-around text-xs mb-3 font-bold bg-gray-800 rounded p-1">
-                                {hoveredLink.highConflicts > 0 && <span className="text-red-400">{hoveredLink.highConflicts} High</span>}
-                                {hoveredLink.mediumConflicts > 0 && <span className="text-orange-400">{hoveredLink.mediumConflicts} Med</span>}
-                                {hoveredLink.overlaps > 0 && <span className="text-yellow-400">{hoveredLink.overlaps} Overlap</span>}
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                                <div className="bg-red-900/30 border border-red-500/30 rounded p-1 text-center">
+                                    <span className="block text-lg font-bold text-red-400 leading-none">{hoveredLink.highConflicts}</span>
+                                    <span className="text-[9px] text-red-200 uppercase">High Conflict</span>
+                                </div>
+                                <div className="bg-orange-900/30 border border-orange-500/30 rounded p-1 text-center">
+                                    <span className="block text-lg font-bold text-orange-400 leading-none">{hoveredLink.mediumConflicts}</span>
+                                    <span className="text-[9px] text-orange-200 uppercase">Med Conflict</span>
+                                </div>
+                                <div className="bg-yellow-900/30 border border-yellow-500/30 rounded p-1 text-center">
+                                    <span className="block text-lg font-bold text-yellow-400 leading-none">{hoveredLink.overlaps}</span>
+                                    <span className="text-[9px] text-yellow-200 uppercase">Overlaps</span>
+                                </div>
                             </div>
 
                             <div className="flex-grow overflow-y-auto custom-scrollbar">

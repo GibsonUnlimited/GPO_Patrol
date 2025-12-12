@@ -109,6 +109,28 @@ export interface ConsolidationResult {
   mergeReport: MergeReport;
 }
 
+// --- NEW ORGANIZATION ANALYSIS TYPES ---
+export interface GpoClassification {
+  gpoName: string;
+  type: 'User' | 'Computer' | 'Mixed';
+  primaryCategory: string; // e.g. "Browser Config", "Server Hardening"
+  reason: string;
+}
+
+export interface OrganizationRecommendation {
+  groupName: string;
+  description: string;
+  suggestedGpos: string[];
+  reason: string;
+  type: 'User' | 'Computer' | 'Mixed'; 
+}
+
+export interface OrganizationAnalysis {
+  summary: string;
+  classifications: GpoClassification[];
+  recommendations: OrganizationRecommendation[];
+}
+
 export interface LogEntry {
   timestamp: string;
   message: string;

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalysisResponse, Analysis, ProgressState, ConsolidationResult } from '../types';
+import type { AnalysisResponse, Analysis, ProgressState, ConsolidationResult, OrganizationAnalysis } from '../types';
 
 // Helper to get the best available API Key
 const getApiKey = (): string => {
@@ -505,4 +505,78 @@ export const generateConsolidatedGpo = async (
         script: cleanedScript,
         mergeReport: result.mergeReport
     };
+};
+
+// --- NEW ORGANIZATION ANALYSIS SERVICE ---
+export const generateOrganizationAnalysis = async (
+    gpoContents: string[], 
+    onProgress: (progress: ProgressState) => void
+): Promise<OrganizationAnalysis> => {
+    
+    if (gpoContents.length === 0) throw new Error("No GPOs provided for organization analysis.");
+    
+    onProgress({ stage: 'Analyzing Policy Content & Types...', current: 1, total: 1 });
+
+    const organizationPrompt = `
+      You are a world-class Active Directory Architect. 
+      Your task is to analyze a set of GPOs and provide a "Logical Organization Plan" based on their *content* and *function*, NOT their current linking.
+
+      **Goal:**
+      1.  **Separate User vs. Computer**: Identify "Mixed" GPOs (bad practice) that contain both user and computer settings.
+      2.  **Functional Grouping**: Group GPOs based on their setting types (e.g., "Server Hardening", "Browser Config", "Office Apps") to keep "like-minded" policies together.
+      3.  **Optimization**: Recommend merges based on *function* (e.g. "Merge all Chrome GPOs into one"), regardless of their current OUs.
+
+      **Analysis Rules:**
+      - **Classification**: Tag each GPO as 'User', 'Computer', or 'Mixed'. 
+      - **Mixed Policies**: Flag these as needing remediation (splitting).
+      - **Grouping**: Ignore current OU links. Look at the *settings*. 
+        - Put Server settings (Service config, Security options) together.
+        - Put Workstation settings (Start menu, WiFi) together.
+        - Put Application settings (Chrome, Office) together.
+
+      **Input:**
+      ---
+      ${gpoContents.map((report, index) => `--- GPO REPORT ${index + 1} ---\n${report}`).join('\n')}
+      ---
+
+      Provide your response in a single JSON object.
+    `;
+
+    const organizationSchema = {
+        type: Type.OBJECT,
+        properties: {
+            summary: { type: Type.STRING, description: "Executive summary of the current state of GPO organization and major recommendations." },
+            classifications: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        gpoName: { type: Type.STRING },
+                        type: { type: Type.STRING, enum: ['User', 'Computer', 'Mixed'] },
+                        primaryCategory: { type: Type.STRING, description: "E.g., 'Browser Configuration', 'Security Hardening', 'Drive Maps', 'Printers'" },
+                        reason: { type: Type.STRING, description: "Why it was classified this way (e.g., 'Contains 15 User settings and 0 Computer settings')." }
+                    },
+                    required: ["gpoName", "type", "primaryCategory", "reason"]
+                }
+            },
+            recommendations: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        groupName: { type: Type.STRING, description: "Proposed name for this logical group (e.g., 'Workstation - Browser Baseline')." },
+                        description: { type: Type.STRING },
+                        suggestedGpos: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        reason: { type: Type.STRING, description: "Why these GPOs belong together (e.g., 'All contain Google Chrome settings')." },
+                        type: { type: Type.STRING, enum: ['User', 'Computer', 'Mixed'] }
+                    },
+                    required: ["groupName", "description", "suggestedGpos", "reason", "type"]
+                }
+            }
+        },
+        required: ["summary", "classifications", "recommendations"]
+    };
+
+    const result = await callApi(organizationPrompt, organizationSchema);
+    return result;
 };

@@ -7,18 +7,20 @@ import { GpoOneToAllInputForm } from './components/GpoOneToAllInputForm';
 import { GpoConsolidatorForm } from './components/GpoConsolidatorForm';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
 import { ConsolidationDisplay } from './components/ConsolidationDisplay';
+import { OrganizationDisplay } from './components/OrganizationDisplay'; // NEW
 import { AnalysisProgress } from './components/AnalysisProgress';
-import { generateGpoScriptAndAnalysis, generateConsolidatedGpo } from './services/geminiService';
+import { generateGpoScriptAndAnalysis, generateConsolidatedGpo, generateOrganizationAnalysis } from './services/geminiService'; // NEW
 import { ReportToolbar } from './components/ReportToolbar';
 import { AnalyzedGpoList } from './components/AnalyzedGpoList';
 import { ScriptsModal } from './components/ScriptsModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ScriptDisplay } from './components/ScriptDisplay';
-import type { Analysis, AnalysisResponse, ProgressState, ConsolidationResult, LogEntry } from './types';
+import type { Analysis, AnalysisResponse, ProgressState, ConsolidationResult, LogEntry, OrganizationAnalysis } from './types'; // NEW
 
 type AnalyzerTab = 'paste' | 'folder' | 'one-to-all';
-type ViewMode = 'landing' | 'analyzer' | 'consolidator';
-type AppState = 'idle' | 'analyzing' | 'consolidating' | 'displaying_analysis' | 'displaying_consolidation';
+type OrganizerTab = 'paste' | 'folder';
+type ViewMode = 'landing' | 'analyzer' | 'consolidator' | 'organizer'; // NEW
+type AppState = 'idle' | 'analyzing' | 'consolidating' | 'organizing' | 'displaying_analysis' | 'displaying_consolidation' | 'displaying_organization'; // NEW
 
 const SAVE_KEY = 'gpoAnalysisSession';
 
@@ -43,20 +45,95 @@ const ArrowLeftIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
     </svg>
 );
-const ChartBarIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M6 16.5v2.25a2.25 2.25 0 01-2.25 2.25H3.75m11.25-18v11.25c0 1.242 1.008 2.25 2.25 2.25h2.25M15 1.5v2.25a2.25 2.25 0 002.25 2.25H19.5m-7.5-3v11.25c0 1.242 1.008 2.25 2.25 2.25h2.25M10.5 1.5v2.25a2.25 2.25 0 002.25 2.25H15" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 16.5h16.5" />
-    </svg>
-);
-const MergeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v2.25A2.25 2.25 0 006 10.5zm0 9.75h2.25A2.25 2.25 0 0010.5 18v-2.25a2.25 2.25 0 00-2.25-2.25H6a2.25 2.25 0 00-2.25 2.25V18A2.25 2.25 0 006 20.25z" />
-    </svg>
-);
 const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    </svg>
+);
+const FolderOpenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+    </svg>
+);
+
+// --- ANIMATED ICONS FOR CARDS ---
+
+// Analyzer: Cyber Scan
+// A document outline with a scanning laser bar moving up and down
+const AnalyzerAnimatedIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-cyan-300">
+     {/* Document Outline */}
+     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+     
+     {/* Scanning Beam Container (Clipped) */}
+     <defs>
+        <clipPath id="scan-clip">
+             <path d="M5 4h14v17H5z" />
+        </clipPath>
+     </defs>
+     
+     {/* Animated Scan Line */}
+     <g clipPath="url(#scan-clip)">
+        <line x1="4" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="2" className="text-cyan-400 opacity-80 group-hover:animate-laser-scan shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
+        <rect x="4" y="4" width="16" height="4" fill="url(#scan-gradient)" className="opacity-0 group-hover:opacity-40 group-hover:animate-laser-scan" />
+     </g>
+     <defs>
+        <linearGradient id="scan-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+        </linearGradient>
+     </defs>
+  </svg>
+);
+
+// Organizer: Smart Stack
+// 3 Layers that expand out and then snap back into a clean stack
+const OrganizerAnimatedIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-indigo-300">
+    {/* Bottom Layer */}
+    <path 
+        d="M4 18h16v2H4z" 
+        strokeLinecap="round" strokeLinejoin="round" 
+        className="fill-indigo-900/40"
+    />
+    {/* Middle Layer (Animates) */}
+    <g className="group-hover:animate-stack-float-mid">
+        <path 
+            d="M4 14h16v2H4z" 
+            strokeLinecap="round" strokeLinejoin="round" 
+            className="fill-indigo-800/60"
+        />
+    </g>
+    {/* Top Layer (Animates) */}
+    <g className="group-hover:animate-stack-float-top">
+        <path 
+            d="M4 10h16v2H4z" 
+            strokeLinecap="round" strokeLinejoin="round" 
+            className="fill-indigo-700/80"
+        />
+        {/* Tab */}
+        <path d="M4 10L6 8h4l2 2" strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  </svg>
+);
+
+// Consolidator: Fusion Core
+// 4 Outer particles converging into a center point, creating a flash
+const ConsolidatorAnimatedIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-sky-300">
+        {/* Center Core */}
+        <circle cx="12" cy="12" r="3" className="fill-sky-500/20 group-hover:animate-pulse" />
+        
+        {/* Orbiting Particles that merge */}
+        <g className="group-hover:animate-fusion-merge">
+            <circle cx="5" cy="5" r="2" className="fill-sky-300" />
+            <circle cx="19" cy="5" r="2" className="fill-sky-300" />
+            <circle cx="5" cy="19" r="2" className="fill-sky-300" />
+            <circle cx="19" cy="19" r="2" className="fill-sky-300" />
+        </g>
+        
+        {/* Flash ring */}
+        <circle cx="12" cy="12" r="8" stroke="currentColor" strokeDasharray="4 4" className="opacity-0 group-hover:opacity-100 group-hover:animate-spin-slow transition-opacity duration-700" />
     </svg>
 );
 
@@ -70,9 +147,12 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('landing');
   const [appState, setAppState] = useState<AppState>('idle');
   const [analyzerTab, setAnalyzerTab] = useState<AnalyzerTab>('paste');
+  const [organizerTab, setOrganizerTab] = useState<OrganizerTab>('paste');
   
   const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
   const [consolidationResult, setConsolidationResult] = useState<ConsolidationResult | null>(null);
+  const [organizationResult, setOrganizationResult] = useState<OrganizationAnalysis | null>(null); // NEW
+
   const [error, setError] = useState<string | null>(null);
   const [isSessionAvailable, setIsSessionAvailable] = useState<boolean>(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
@@ -146,6 +226,7 @@ const App: React.FC = () => {
     setError(null);
     setAnalysisResult(null);
     setConsolidationResult(null);
+    setOrganizationResult(null);
     setProgress(null);
     setLogs([]);
     setViewMode('landing');
@@ -155,6 +236,7 @@ const App: React.FC = () => {
       setError(null);
       setAnalysisResult(null);
       setConsolidationResult(null);
+      setOrganizationResult(null);
       setAppState('idle');
   };
 
@@ -163,6 +245,7 @@ const App: React.FC = () => {
     setError(null);
     setAnalysisResult(null);
     setConsolidationResult(null);
+    setOrganizationResult(null);
     setProgress(null);
     setLogs([]);
 
@@ -260,6 +343,7 @@ const App: React.FC = () => {
     setError(null);
     setAnalysisResult(null);
     setConsolidationResult(null);
+    setOrganizationResult(null);
     setProgress(null);
     setLogs([{ timestamp: new Date().toLocaleTimeString(), type: 'info', message: 'Starting consolidation process...' }]);
     
@@ -278,15 +362,40 @@ const App: React.FC = () => {
     }
   }, []);
   
-  const TabButton: React.FC<{tabId: AnalyzerTab; children: React.ReactNode}> = ({ tabId, children }) => (
+  // NEW: Handle Organization Logic
+  const handleOrganization = useCallback(async (gpoContents: string[]) => {
+      setAppState('organizing');
+      setError(null);
+      setAnalysisResult(null);
+      setConsolidationResult(null);
+      setOrganizationResult(null);
+      setProgress(null);
+      setLogs([{ timestamp: new Date().toLocaleTimeString(), type: 'info', message: 'Analyzing GPO Structure and Settings...' }]);
+
+      try {
+          const result = await generateOrganizationAnalysis(gpoContents, setProgress);
+          setOrganizationResult(result);
+          setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Organization Analysis Complete.' }]);
+          setAppState('displaying_organization');
+      } catch(err) {
+          setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+          setOrganizationResult(null);
+          setAppState('idle');
+          console.error(err);
+      } finally {
+          setProgress(null);
+      }
+  }, []);
+
+  const TabButton: React.FC<{tabId: string; activeTab: string; setTab: (id: any) => void; children: React.ReactNode}> = ({ tabId, activeTab, setTab, children }) => (
     <button
-      onClick={() => setAnalyzerTab(tabId)}
+      onClick={() => setTab(tabId)}
       className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
-        analyzerTab === tabId
+        activeTab === tabId
           ? 'bg-cyan-600 text-white shadow-md'
           : 'text-gray-300 hover:bg-gray-700/80'
       }`}
-      aria-pressed={analyzerTab === tabId}
+      aria-pressed={activeTab === tabId}
     >
       {children}
     </button>
@@ -294,13 +403,68 @@ const App: React.FC = () => {
 
   const renderLanding = () => (
       <div className="max-w-6xl mx-auto mt-10 animate-fade-in">
+          {/* Style injection for animations */}
+          <style>{`
+            /* Radar Scan Animation */
+            @keyframes laser-scan {
+                0% { transform: translateY(0); opacity: 0; }
+                10% { opacity: 1; }
+                90% { opacity: 1; }
+                100% { transform: translateY(12px); opacity: 0; }
+            }
+            .group:hover .group-hover\\:animate-laser-scan {
+                animation: laser-scan 1.5s linear infinite;
+            }
+
+            /* Stack Animation */
+            @keyframes stack-float-top {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-3px); }
+            }
+            @keyframes stack-float-mid {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-1.5px); }
+            }
+            .group:hover .group-hover\\:animate-stack-float-top {
+                animation: stack-float-top 1s ease-in-out infinite;
+            }
+            .group:hover .group-hover\\:animate-stack-float-mid {
+                animation: stack-float-mid 1s ease-in-out infinite 0.1s;
+            }
+
+            /* Fusion Animation */
+            @keyframes fusion-merge {
+                0% { transform: scale(1); opacity: 1; }
+                50% { transform: scale(0.5) translate(12px, 12px); opacity: 0.5; } /* Move towards center relative to origin */
+                100% { transform: scale(0.1) translate(24px, 24px); opacity: 0; }
+            }
+            /* Simplified fusion for particles */
+            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(1) { animation: particle-1 1s ease-in infinite forwards; }
+            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(2) { animation: particle-2 1s ease-in infinite forwards; }
+            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(3) { animation: particle-3 1s ease-in infinite forwards; }
+            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(4) { animation: particle-4 1s ease-in infinite forwards; }
+
+            @keyframes particle-1 { 0% { cx: 5; cy: 5; } 100% { cx: 12; cy: 12; } }
+            @keyframes particle-2 { 0% { cx: 19; cy: 5; } 100% { cx: 12; cy: 12; } }
+            @keyframes particle-3 { 0% { cx: 5; cy: 19; } 100% { cx: 12; cy: 12; } }
+            @keyframes particle-4 { 0% { cx: 19; cy: 19; } 100% { cx: 12; cy: 12; } }
+
+            @keyframes spin-slow {
+                from { transform: rotate(0deg); transform-origin: center; }
+                to { transform: rotate(360deg); transform-origin: center; }
+            }
+            .group:hover .group-hover\\:animate-spin-slow {
+                animation: spin-slow 3s linear infinite;
+            }
+          `}</style>
+
           <div className="text-center mb-12">
                <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500 mb-4">
                   GPO Patrol: Hardening & Performance
                </h1>
                <p className="text-xl text-gray-400">Optimize your Active Directory environment for speed and security.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Analyzer Card */}
               <button 
                   onClick={() => {
@@ -311,13 +475,32 @@ const App: React.FC = () => {
               >
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
-                      <div className="w-16 h-16 bg-cyan-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-cyan-500/20">
-                          <ChartBarIcon className="w-8 h-8 text-cyan-300" />
+                      <div className="w-16 h-16 bg-cyan-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-cyan-500/20 overflow-hidden">
+                          <AnalyzerAnimatedIcon />
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-cyan-300 transition-colors">Analyzer & Hardening</h2>
-                      <p className="text-gray-400 leading-relaxed">
-                          Detect security conflicts and identify "sparse" GPOs that slow down logins. 
-                          Generate remediation scripts to enforce a tight security baseline.
+                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-cyan-300 transition-colors">Analyzer</h2>
+                      <p className="text-gray-400 leading-relaxed text-sm">
+                          Detect security conflicts and identify "sparse" GPOs. Generate remediation scripts to enforce a tight security baseline.
+                      </p>
+                  </div>
+              </button>
+              
+              {/* Organizer Card (NEW) */}
+              <button
+                  onClick={() => {
+                      setViewMode('organizer');
+                      setOrganizerTab('paste');
+                  }}
+                  className="group relative p-8 bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 hover:border-indigo-500/50 transition-all duration-300 text-left hover:shadow-[0_0_40px_rgba(99,102,241,0.25)] hover:-translate-y-1 overflow-hidden"
+              >
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                      <div className="w-16 h-16 bg-indigo-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-indigo-500/20 overflow-hidden">
+                          <OrganizerAnimatedIcon />
+                      </div>
+                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-indigo-300 transition-colors">Organizer</h2>
+                      <p className="text-gray-400 leading-relaxed text-sm">
+                          Logical organization based on function. Separate User vs. Computer policies and group "like-minded" settings.
                       </p>
                   </div>
               </button>
@@ -329,13 +512,12 @@ const App: React.FC = () => {
               >
                    <div className="absolute inset-0 bg-gradient-to-br from-sky-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                    <div className="relative z-10">
-                      <div className="w-16 h-16 bg-sky-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-sky-500/20">
-                          <MergeIcon className="w-8 h-8 text-sky-300" />
+                      <div className="w-16 h-16 bg-sky-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-sky-500/20 overflow-hidden">
+                          <ConsolidatorAnimatedIcon />
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-sky-300 transition-colors">Performance Consolidator</h2>
-                      <p className="text-gray-400 leading-relaxed">
-                           Merge fragmented policies into high-performance baselines. 
-                           Reducing GPO count directly improves client login times and simplifies management.
+                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-sky-300 transition-colors">Consolidator</h2>
+                      <p className="text-gray-400 leading-relaxed text-sm">
+                           Merge fragmented policies into high-performance baselines to reduce processing overhead.
                       </p>
                    </div>
               </button>
@@ -349,6 +531,18 @@ const App: React.FC = () => {
                     >
                         <BookOpenIcon className="w-5 h-5 mr-2" />
                         Scripts & Tools Library
+                    </button>
+
+                    {/* Upload Folder Button (Restored) */}
+                    <button
+                        onClick={() => {
+                            setViewMode('analyzer');
+                            setAnalyzerTab('folder');
+                        }}
+                        className="inline-flex items-center px-6 py-3 border border-indigo-500/50 text-sm font-medium rounded-md text-indigo-300 bg-indigo-900/30 hover:bg-indigo-900/60 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-500 transition-colors"
+                    >
+                        <FolderOpenIcon className="w-5 h-5 mr-2" />
+                        Upload GPO Folder
                     </button>
                     
                     {/* Load Session File Button */}
@@ -497,9 +691,9 @@ const App: React.FC = () => {
             </div>
             
             <div className="mb-4 flex space-x-2 p-1 bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 self-start inline-block">
-                <TabButton tabId="paste">All-vs-All Paste</TabButton>
-                <TabButton tabId="one-to-all">1-to-All Paste</TabButton>
-                <TabButton tabId="folder">File Upload</TabButton>
+                <TabButton tabId="paste" activeTab={analyzerTab} setTab={setAnalyzerTab}>All-vs-All Paste</TabButton>
+                <TabButton tabId="one-to-all" activeTab={analyzerTab} setTab={setAnalyzerTab}>1-to-All Paste</TabButton>
+                <TabButton tabId="folder" activeTab={analyzerTab} setTab={setAnalyzerTab}>File Upload</TabButton>
             </div>
 
             {analyzerTab === 'paste' && (
@@ -513,6 +707,107 @@ const App: React.FC = () => {
             )}
           </div>
       );
+  }
+
+  const renderOrganizer = () => {
+    const isLoading = appState === 'organizing';
+
+    const navHeader = (
+        <div className="mb-6 flex items-center justify-between">
+            <button 
+                onClick={handleHome}
+                disabled={isLoading}
+                className="inline-flex items-center text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
+            >
+                <ArrowLeftIcon className="w-5 h-5 mr-2" />
+                Back to Home
+            </button>
+            <h2 className="text-xl font-semibold text-gray-300 hidden sm:block">GPO Organizer</h2>
+        </div>
+    );
+
+    if (error) {
+        return (
+           <div className="max-w-4xl mx-auto">
+               {navHeader}
+               <div className="bg-red-900/50 border border-red-700 text-red-300 p-6 rounded-lg shadow-lg animate-fade-in">
+                   <h3 className="font-bold text-xl mb-2">Analysis Failed</h3>
+                   <p className="mb-4">{error}</p>
+                   <div className="flex space-x-4">
+                       <button onClick={handleReset} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors">
+                           Try Again
+                       </button>
+                       <button onClick={() => setIsSettingsModalOpen(true)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-md transition-colors">
+                            Check Settings (API Key)
+                       </button>
+                   </div>
+               </div>
+           </div>
+        );
+     }
+
+     if ((appState === 'organizing' || appState === 'displaying_organization') && organizationResult) {
+        return (
+            <div className="w-full max-w-[98%] mx-auto animate-fade-in">
+                {navHeader}
+                {appState === 'organizing' && (
+                    <div className="mb-8">
+                         <AnalysisProgress 
+                            progress={progress} 
+                            title="Analyzing Logical Structure..." 
+                            logs={logs} 
+                            compact={true}
+                        />
+                    </div>
+                )}
+                
+                <OrganizationDisplay result={organizationResult} />
+                
+                <div className="flex justify-center space-x-4 mt-12 mb-12">
+                   <button onClick={handleReset} className="inline-flex justify-center items-center px-6 py-3 border border-gray-600 text-base font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 transition-colors">
+                      Start New Organization Analysis
+                   </button>
+                </div>
+            </div>
+        )
+    }
+
+    if (appState === 'organizing' && !organizationResult) {
+        return (
+           <div className="max-w-4xl mx-auto">
+                {navHeader}
+                <AnalysisProgress 
+                   progress={progress} 
+                   title="Scanning Policy Content..." 
+                   logs={logs} 
+               />
+           </div>
+        );
+    }
+
+    return (
+        <div className="max-w-4xl mx-auto animate-fade-in">
+            {navHeader}
+            <div className="text-center mb-8">
+                <p className="text-gray-400">
+                    Paste or upload GPO reports to separate User vs. Computer policies and group settings by function (e.g., Application Servers, Workstations).
+                    This analysis ignores current linking and focuses purely on content.
+                </p>
+            </div>
+            
+            <div className="mb-4 flex space-x-2 p-1 bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 self-start inline-block">
+                <TabButton tabId="paste" activeTab={organizerTab} setTab={setOrganizerTab}>Paste GPOs</TabButton>
+                <TabButton tabId="folder" activeTab={organizerTab} setTab={setOrganizerTab}>File Upload</TabButton>
+            </div>
+
+            {organizerTab === 'paste' && (
+                <GpoInputForm onGenerate={handleOrganization} isLoading={isLoading} />
+            )}
+            {organizerTab === 'folder' && (
+                <GpoFolderInput onGenerate={handleOrganization} isLoading={isLoading} />
+            )}
+        </div>
+    );
   }
 
   const renderConsolidator = () => {
@@ -611,6 +906,7 @@ const App: React.FC = () => {
       <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-0 max-w-[100%]">
         {viewMode === 'landing' && renderLanding()}
         {viewMode === 'analyzer' && renderAnalyzer()}
+        {viewMode === 'organizer' && renderOrganizer()}
         {viewMode === 'consolidator' && renderConsolidator()}
       </main>
 
