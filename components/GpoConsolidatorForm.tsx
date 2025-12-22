@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 
 interface GpoInput {
@@ -10,7 +11,7 @@ interface GpoConsolidatorFormProps {
   isLoading: boolean;
 }
 
-const MAX_SIZE_BYTES = 5_000_000; // 5MB limit
+const MAX_SIZE_BYTES = 50_000_000; // 50MB limit
 
 export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGenerate, isLoading }) => {
   const [inputs, setInputs] = useState<GpoInput[]>([
@@ -51,7 +52,7 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
     setDragOverId(id);
   };
   
-  const handleDragLeave = (e: React.DragEvent<HTMLTextAreaElement>) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLTextAreaElement>, id: number) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverId(null);
@@ -114,7 +115,8 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
                 onChange={(e) => handleInputChange(input.id, e.target.value)}
                 onDragOver={handleDragOver}
                 onDragEnter={(e) => handleDragEnter(e, input.id)}
-                onDragLeave={handleDragLeave}
+                // Fix: Pass both the event and the input ID to the handler to satisfy the (e, id) signature
+                onDragLeave={(e) => handleDragLeave(e, input.id)}
                 onDrop={(e) => handleDrop(e, input.id)}
                 placeholder={`Paste GPO report #${index + 1} content here, or drag & drop a file...`}
                 className={`w-full p-3 bg-gray-900 border rounded-md text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200 text-sm font-mono ${

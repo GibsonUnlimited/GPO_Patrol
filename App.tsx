@@ -1,937 +1,260 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Header } from './components/Header';
 import { GpoInputForm } from './components/GpoInputForm';
 import { GpoFolderInput } from './components/GpoFolderInput';
 import { GpoOneToAllInputForm } from './components/GpoOneToAllInputForm';
 import { GpoConsolidatorForm } from './components/GpoConsolidatorForm';
 import { AnalysisDisplay } from './components/AnalysisDisplay';
-import { ConsolidationDisplay } from './components/ConsolidationDisplay';
-import { OrganizationDisplay } from './components/OrganizationDisplay'; // NEW
+import { OrganizationDisplay } from './components/OrganizationDisplay';
 import { AnalysisProgress } from './components/AnalysisProgress';
-import { generateGpoScriptAndAnalysis, generateConsolidatedGpo, generateOrganizationAnalysis } from './services/geminiService'; // NEW
-import { ReportToolbar } from './components/ReportToolbar';
-import { AnalyzedGpoList } from './components/AnalyzedGpoList';
-import { ScriptsModal } from './components/ScriptsModal';
+import { generateGpoScriptAndAnalysis, generateConsolidatedGpo, generateOrganizationAnalysis } from './services/geminiService';
 import { SettingsModal } from './components/SettingsModal';
-import { ScriptDisplay } from './components/ScriptDisplay';
-import type { Analysis, AnalysisResponse, ProgressState, ConsolidationResult, LogEntry, OrganizationAnalysis } from './types'; // NEW
+import type { Analysis, AnalysisResponse, ProgressState, LogEntry, OrganizationAnalysis } from './types';
 
-type AnalyzerTab = 'paste' | 'folder' | 'one-to-all';
-type OrganizerTab = 'paste' | 'folder';
-type ViewMode = 'landing' | 'analyzer' | 'consolidator' | 'organizer'; // NEW
-type AppState = 'idle' | 'analyzing' | 'consolidating' | 'organizing' | 'displaying_analysis' | 'displaying_consolidation' | 'displaying_organization'; // NEW
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
+  interface Window {
+    aistudio?: AIStudio;
+  }
+}
+
+type InputMethod = 'workshop' | 'bulk';
+type LogicMode = 'analysis' | 'organization';
+type ViewMode = 'landing' | 'input' | 'consolidator';
+type AppState = 'idle' | 'processing' | 'displaying_analysis' | 'displaying_organization' | 'error';
 
 const SAVE_KEY = 'gpoAnalysisSession';
 
-// --- Icons ---
-const TrashIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-  </svg>
-);
-const LoadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-    </svg>
-);
-const BookOpenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-    </svg>
-);
-const ArrowLeftIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-    </svg>
-);
-const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-    </svg>
-);
-const FolderOpenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-    </svg>
-);
-
-// --- ANIMATED ICONS FOR CARDS ---
-
-// Analyzer: Cyber Scan
-// A document outline with a scanning laser bar moving up and down
-const AnalyzerAnimatedIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-cyan-300">
-     {/* Document Outline */}
-     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-     
-     {/* Scanning Beam Container (Clipped) */}
-     <defs>
-        <clipPath id="scan-clip">
-             <path d="M5 4h14v17H5z" />
-        </clipPath>
-     </defs>
-     
-     {/* Animated Scan Line */}
-     <g clipPath="url(#scan-clip)">
-        <line x1="4" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="2" className="text-cyan-400 opacity-80 group-hover:animate-laser-scan shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
-        <rect x="4" y="4" width="16" height="4" fill="url(#scan-gradient)" className="opacity-0 group-hover:opacity-40 group-hover:animate-laser-scan" />
-     </g>
-     <defs>
-        <linearGradient id="scan-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
-        </linearGradient>
-     </defs>
-  </svg>
-);
-
-// Organizer: Smart Stack
-// 3 Layers that expand out and then snap back into a clean stack
-const OrganizerAnimatedIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-indigo-300">
-    {/* Bottom Layer */}
-    <path 
-        d="M4 18h16v2H4z" 
-        strokeLinecap="round" strokeLinejoin="round" 
-        className="fill-indigo-900/40"
-    />
-    {/* Middle Layer (Animates) */}
-    <g className="group-hover:animate-stack-float-mid">
-        <path 
-            d="M4 14h16v2H4z" 
-            strokeLinecap="round" strokeLinejoin="round" 
-            className="fill-indigo-800/60"
-        />
-    </g>
-    {/* Top Layer (Animates) */}
-    <g className="group-hover:animate-stack-float-top">
-        <path 
-            d="M4 10h16v2H4z" 
-            strokeLinecap="round" strokeLinejoin="round" 
-            className="fill-indigo-700/80"
-        />
-        {/* Tab */}
-        <path d="M4 10L6 8h4l2 2" strokeLinecap="round" strokeLinejoin="round" />
-    </g>
-  </svg>
-);
-
-// Consolidator: Fusion Core
-// 4 Outer particles converging into a center point, creating a flash
-const ConsolidatorAnimatedIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-sky-300">
-        {/* Center Core */}
-        <circle cx="12" cy="12" r="3" className="fill-sky-500/20 group-hover:animate-pulse" />
-        
-        {/* Orbiting Particles that merge */}
-        <g className="group-hover:animate-fusion-merge">
-            <circle cx="5" cy="5" r="2" className="fill-sky-300" />
-            <circle cx="19" cy="5" r="2" className="fill-sky-300" />
-            <circle cx="5" cy="19" r="2" className="fill-sky-300" />
-            <circle cx="19" cy="19" r="2" className="fill-sky-300" />
-        </g>
-        
-        {/* Flash ring */}
-        <circle cx="12" cy="12" r="8" stroke="currentColor" strokeDasharray="4 4" className="opacity-0 group-hover:opacity-100 group-hover:animate-spin-slow transition-opacity duration-700" />
-    </svg>
-);
-
-
-interface GpoData {
-    baseGpo?: string;
-    comparisonGpos: string[];
-}
-
 const App: React.FC = () => {
-  const [viewMode, setViewMode] = useState<ViewMode>('landing');
-  const [appState, setAppState] = useState<AppState>('idle');
-  const [analyzerTab, setAnalyzerTab] = useState<AnalyzerTab>('paste');
-  const [organizerTab, setOrganizerTab] = useState<OrganizerTab>('paste');
-  
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
-  const [consolidationResult, setConsolidationResult] = useState<ConsolidationResult | null>(null);
-  const [organizationResult, setOrganizationResult] = useState<OrganizationAnalysis | null>(null); // NEW
-
-  const [error, setError] = useState<string | null>(null);
-  const [isSessionAvailable, setIsSessionAvailable] = useState<boolean>(false);
-  const [progress, setProgress] = useState<ProgressState | null>(null);
-  const [isScriptsModalOpen, setIsScriptsModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  useEffect(() => {
-    if (localStorage.getItem(SAVE_KEY)) {
-      setIsSessionAvailable(true);
-    }
-  }, []);
-
-  const handleLoadSession = () => {
-    try {
-      const savedJson = localStorage.getItem(SAVE_KEY);
-      if (savedJson) {
-        const savedResult: AnalysisResponse = JSON.parse(savedJson);
-        setAnalysisResult(savedResult);
-        setError(null);
-        setViewMode('analyzer');
-        setAppState('displaying_analysis');
-        setLogs([{ timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Session restored from Browser Storage.' }]);
-      }
-    } catch (e) {
-      console.error("Failed to load session:", e);
-      setError("Could not load the saved session. The data might be corrupted.");
-      localStorage.removeItem(SAVE_KEY);
-      setIsSessionAvailable(false);
-    }
-  };
-
-  const handleSessionFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const json = e.target?.result as string;
-            const parsed = JSON.parse(json);
-            // Basic validation
-            if (parsed.analysis && parsed.analysis.stats) {
-                setAnalysisResult(parsed);
-                setError(null);
-                setViewMode('analyzer');
-                setAppState('displaying_analysis');
-                setLogs([{ timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Session loaded successfully from file.' }]);
-            } else {
-                throw new Error("Invalid session file format.");
-            }
-        } catch (err) {
-            alert("Failed to load session file. It may be corrupted or invalid.");
-            console.error(err);
-        }
-    };
-    reader.readAsText(file);
-    // Reset value so same file can be selected again
-    event.target.value = '';
-  };
-
-  const handleClearSession = () => {
-    localStorage.removeItem(SAVE_KEY);
-    setIsSessionAvailable(false);
-    alert("Saved session data has been cleared from local storage.");
-  };
-  
-  const handleHome = () => {
-    setAppState('idle');
-    setError(null);
-    setAnalysisResult(null);
-    setConsolidationResult(null);
-    setOrganizationResult(null);
-    setProgress(null);
-    setLogs([]);
-    setViewMode('landing');
-  };
-
-  const handleReset = () => {
-      setError(null);
-      setAnalysisResult(null);
-      setConsolidationResult(null);
-      setOrganizationResult(null);
-      setAppState('idle');
-  };
-
-  const handleGenerate = useCallback(async (gpoData: GpoData) => {
-    setAppState('analyzing');
-    setError(null);
-    setAnalysisResult(null);
-    setConsolidationResult(null);
-    setOrganizationResult(null);
-    setProgress(null);
-    setLogs([]);
-
-    const onPartialResultCallback = (partialAnalysis: Analysis) => {
-        const timestamp = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const batchLogs: LogEntry[] = [];
-        
-        partialAnalysis.gpoDetails.forEach(gpo => {
-            batchLogs.push({ timestamp, type: 'info', message: `Scanning Policy: "${gpo.name}"` });
-            if (gpo.linkedOUs && gpo.linkedOUs.length > 0) {
-                 gpo.linkedOUs.forEach(ou => 
-                    batchLogs.push({ timestamp, type: 'detail', message: `   ↳ Linked to: ${ou}` })
-                 );
-            }
-        });
-
-        if (partialAnalysis.securityRecommendations && partialAnalysis.securityRecommendations.length > 0) {
-             batchLogs.push({ timestamp, type: 'error', message: `   [!] FOUND ${partialAnalysis.securityRecommendations.length} SECURITY RISKS` });
-        }
-
-        partialAnalysis.findings.forEach(finding => {
-             if (finding.type === 'Conflict') {
-                 batchLogs.push({ timestamp, type: 'error', message: `   [!] CONFLICT: ${finding.setting} (${finding.severity})` });
-             } else {
-                 batchLogs.push({ timestamp, type: 'warning', message: `   [+] OVERLAP: ${finding.setting}` });
-             }
-        });
-        
-        batchLogs.push({ timestamp, type: 'success', message: `✓ Batch analysis processed.` });
-
-        setLogs(prev => [...prev, ...batchLogs]);
-
-        setAnalysisResult(prev => {
-            if (!prev) {
-                return { analysis: partialAnalysis, script: '' };
-            } else {
-                const newAnalysis: Analysis = {
-                    summary: prev.analysis.summary,
-                    stats: {
-                        totalGpos: prev.analysis.stats.totalGpos + partialAnalysis.stats.totalGpos,
-                        highSeverityConflicts: prev.analysis.stats.highSeverityConflicts + partialAnalysis.stats.highSeverityConflicts,
-                        mediumSeverityConflicts: prev.analysis.stats.mediumSeverityConflicts + partialAnalysis.stats.mediumSeverityConflicts,
-                        overlaps: prev.analysis.stats.overlaps + partialAnalysis.stats.overlaps,
-                        consolidationOpportunities: prev.analysis.stats.consolidationOpportunities + partialAnalysis.stats.consolidationOpportunities,
-                        securityAlerts: (prev.analysis.stats.securityAlerts || 0) + (partialAnalysis.stats.securityAlerts || 0),
-                    },
-                    findings: [...prev.analysis.findings, ...partialAnalysis.findings],
-                    consolidation: [...(prev.analysis.consolidation || []), ...(partialAnalysis.consolidation || [])],
-                    securityRecommendations: [...(prev.analysis.securityRecommendations || []), ...(partialAnalysis.securityRecommendations || [])],
-                    gpoDetails: [...prev.analysis.gpoDetails, ...partialAnalysis.gpoDetails],
-                };
-                newAnalysis.gpoDetails = newAnalysis.gpoDetails.filter((gpo, index, self) =>
-                    index === self.findIndex((t) => (t.name === gpo.name))
-                );
-                return { analysis: newAnalysis, script: '' };
-            }
-        });
-    };
-
-    try {
-      const totalGpos = (gpoData.baseGpo ? 1 : 0) + gpoData.comparisonGpos.length;
-      // Require at least 2 GPOs for All-vs-All, but allow 1 for 1-to-All (if just generating script/baseline)
-      const minGpos = gpoData.baseGpo ? 1 : 2;
-      
-      if (totalGpos < minGpos) {
-        throw new Error(gpoData.baseGpo ? "Please provide at least the Base GPO." : "At least two GPO reports are required for analysis.");
-      }
-      const result = await generateGpoScriptAndAnalysis(gpoData, setProgress, onPartialResultCallback);
-      
-      setAnalysisResult(result);
-      
-      // Auto-save session
-      try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(result));
-        setIsSessionAvailable(true);
-      } catch (e) {
-          console.warn("Could not save session to localStorage (likely too large).");
-          setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), type: 'warning', message: 'Session data too large to auto-save.' }]);
-      }
-
-      setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Final Analysis & Script Generated.' }]);
-      setAppState('displaying_analysis');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      setAnalysisResult(null); 
-      setAppState('idle');
-      console.error(err);
-    } finally {
-      setProgress(null);
-    }
-  }, []);
-
-  const handleConsolidate = useCallback(async (gpoContents: string[], newGpoName: string) => {
-    setAppState('consolidating');
-    setError(null);
-    setAnalysisResult(null);
-    setConsolidationResult(null);
-    setOrganizationResult(null);
-    setProgress(null);
-    setLogs([{ timestamp: new Date().toLocaleTimeString(), type: 'info', message: 'Starting consolidation process...' }]);
+    const [viewMode, setViewMode] = useState<ViewMode>('landing');
+    const [appState, setAppState] = useState<AppState>('idle');
+    const [inputMethod, setInputMethod] = useState<InputMethod>('workshop');
+    const [logicMode, setLogicMode] = useState<LogicMode>('analysis');
+    const [bulkSubTab, setBulkSubTab] = useState<'folder' | 'sync'>('folder');
     
-    try {
-        const result = await generateConsolidatedGpo(gpoContents, newGpoName, setProgress);
-        setConsolidationResult(result);
-        setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Consolidation Complete.' }]);
-        setAppState('displaying_consolidation');
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-        setConsolidationResult(null);
+    const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
+    const [organizationResult, setOrganizationResult] = useState<OrganizationAnalysis | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [progress, setProgress] = useState<ProgressState | null>(null);
+    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
+    const [isProTier, setIsProTier] = useState<boolean>(false);
+
+    useEffect(() => {
+        const checkTier = async () => {
+            if (window.aistudio?.hasSelectedApiKey) {
+                const hasKey = await window.aistudio.hasSelectedApiKey();
+                setIsProTier(hasKey);
+            }
+        };
+        checkTier();
+    }, []);
+
+    const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
+        const entry: LogEntry = { timestamp: new Date().toLocaleTimeString(), message, type };
+        setLogs(prev => [...prev, entry]);
+    }, []);
+
+    const handleUpgradeTier = async () => {
+        if (window.aistudio?.openSelectKey) {
+            await window.aistudio.openSelectKey();
+            setIsProTier(true);
+            setError(null);
+            addLog("Professional Tier authenticated.", "success");
+        }
+    };
+
+    const handleHome = () => {
         setAppState('idle');
-        console.error(err);
-    } finally {
+        setError(null);
+        setAnalysisResult(null);
+        setOrganizationResult(null);
         setProgress(null);
-    }
-  }, []);
-  
-  // NEW: Handle Organization Logic
-  const handleOrganization = useCallback(async (gpoContents: string[]) => {
-      setAppState('organizing');
-      setError(null);
-      setAnalysisResult(null);
-      setConsolidationResult(null);
-      setOrganizationResult(null);
-      setProgress(null);
-      setLogs([{ timestamp: new Date().toLocaleTimeString(), type: 'info', message: 'Analyzing GPO Structure and Settings...' }]);
+        setLogs([]);
+        setViewMode('landing');
+    };
 
-      try {
-          const result = await generateOrganizationAnalysis(gpoContents, setProgress);
-          setOrganizationResult(result);
-          setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), type: 'success', message: 'Organization Analysis Complete.' }]);
-          setAppState('displaying_organization');
-      } catch(err) {
-          setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-          setOrganizationResult(null);
-          setAppState('idle');
-          console.error(err);
-      } finally {
-          setProgress(null);
-      }
-  }, []);
+    const handleReset = () => {
+        setError(null);
+        setAppState('idle');
+        setLogs([]);
+    };
 
-  const TabButton: React.FC<{tabId: string; activeTab: string; setTab: (id: any) => void; children: React.ReactNode}> = ({ tabId, activeTab, setTab, children }) => (
-    <button
-      onClick={() => setTab(tabId)}
-      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
-        activeTab === tabId
-          ? 'bg-cyan-600 text-white shadow-md'
-          : 'text-gray-300 hover:bg-gray-700/80'
-      }`}
-      aria-pressed={activeTab === tabId}
-    >
-      {children}
-    </button>
-  );
+    const executeAnalyzer = async (gpoData: any) => {
+        setAppState('processing');
+        setError(null);
+        setLogs([]);
+        addLog("Initializing Forest Scanning Sequence...", "info");
+        try {
+            const result = await generateGpoScriptAndAnalysis(gpoData, setProgress, (p) => {
+                addLog(`Segment complete involving ${p.stats.totalGpos} GPOs.`, "success");
+            });
+            setAnalysisResult(result);
+            setAppState('displaying_analysis');
+        } catch (err: any) {
+            setError(err.message);
+            addLog(`CRITICAL FAILURE: ${err.message}`, "error");
+            setAppState('error');
+        }
+    };
 
-  const renderLanding = () => (
-      <div className="max-w-6xl mx-auto mt-10 animate-fade-in">
-          {/* Style injection for animations */}
-          <style>{`
-            /* Radar Scan Animation */
-            @keyframes laser-scan {
-                0% { transform: translateY(0); opacity: 0; }
-                10% { opacity: 1; }
-                90% { opacity: 1; }
-                100% { transform: translateY(12px); opacity: 0; }
-            }
-            .group:hover .group-hover\\:animate-laser-scan {
-                animation: laser-scan 1.5s linear infinite;
-            }
+    const executeOrganizer = async (contents: string[]) => {
+        setAppState('processing');
+        setError(null);
+        setLogs([]);
+        addLog("Analyzing functional organizational structures...", "info");
+        try {
+            const result = await generateOrganizationAnalysis(contents, setProgress);
+            setOrganizationResult(result);
+            addLog("Structural analysis complete.", "success");
+            setAppState('displaying_organization');
+        } catch (err: any) {
+            setError(err.message);
+            addLog(`ORGANIZATION FAILURE: ${err.message}`, "error");
+            setAppState('error');
+        }
+    };
 
-            /* Stack Animation */
-            @keyframes stack-float-top {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-3px); }
-            }
-            @keyframes stack-float-mid {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-1.5px); }
-            }
-            .group:hover .group-hover\\:animate-stack-float-top {
-                animation: stack-float-top 1s ease-in-out infinite;
-            }
-            .group:hover .group-hover\\:animate-stack-float-mid {
-                animation: stack-float-mid 1s ease-in-out infinite 0.1s;
-            }
-
-            /* Fusion Animation */
-            @keyframes fusion-merge {
-                0% { transform: scale(1); opacity: 1; }
-                50% { transform: scale(0.5) translate(12px, 12px); opacity: 0.5; } /* Move towards center relative to origin */
-                100% { transform: scale(0.1) translate(24px, 24px); opacity: 0; }
-            }
-            /* Simplified fusion for particles */
-            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(1) { animation: particle-1 1s ease-in infinite forwards; }
-            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(2) { animation: particle-2 1s ease-in infinite forwards; }
-            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(3) { animation: particle-3 1s ease-in infinite forwards; }
-            .group:hover .group-hover\\:animate-fusion-merge circle:nth-child(4) { animation: particle-4 1s ease-in infinite forwards; }
-
-            @keyframes particle-1 { 0% { cx: 5; cy: 5; } 100% { cx: 12; cy: 12; } }
-            @keyframes particle-2 { 0% { cx: 19; cy: 5; } 100% { cx: 12; cy: 12; } }
-            @keyframes particle-3 { 0% { cx: 5; cy: 19; } 100% { cx: 12; cy: 12; } }
-            @keyframes particle-4 { 0% { cx: 19; cy: 19; } 100% { cx: 12; cy: 12; } }
-
-            @keyframes spin-slow {
-                from { transform: rotate(0deg); transform-origin: center; }
-                to { transform: rotate(360deg); transform-origin: center; }
-            }
-            .group:hover .group-hover\\:animate-spin-slow {
-                animation: spin-slow 3s linear infinite;
-            }
-          `}</style>
-
-          <div className="text-center mb-12">
-               <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500 mb-4">
-                  GPO Patrol: Hardening & Performance
-               </h1>
-               <p className="text-xl text-gray-400">Optimize your Active Directory environment for speed and security.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Analyzer Card */}
-              <button 
-                  onClick={() => {
-                      setViewMode('analyzer');
-                      setAnalyzerTab('paste');
-                  }}
-                  className="group relative p-8 bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 hover:border-cyan-500/50 transition-all duration-300 text-left hover:shadow-[0_0_40px_rgba(6,182,212,0.25)] hover:-translate-y-1 overflow-hidden"
-              >
-                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="relative z-10">
-                      <div className="w-16 h-16 bg-cyan-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-cyan-500/20 overflow-hidden">
-                          <AnalyzerAnimatedIcon />
-                      </div>
-                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-cyan-300 transition-colors">Analyzer</h2>
-                      <p className="text-gray-400 leading-relaxed text-sm">
-                          Detect security conflicts and identify "sparse" GPOs. Generate remediation scripts to enforce a tight security baseline.
-                      </p>
-                  </div>
-              </button>
-              
-              {/* Organizer Card (NEW) */}
-              <button
-                  onClick={() => {
-                      setViewMode('organizer');
-                      setOrganizerTab('paste');
-                  }}
-                  className="group relative p-8 bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 hover:border-indigo-500/50 transition-all duration-300 text-left hover:shadow-[0_0_40px_rgba(99,102,241,0.25)] hover:-translate-y-1 overflow-hidden"
-              >
-                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="relative z-10">
-                      <div className="w-16 h-16 bg-indigo-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-indigo-500/20 overflow-hidden">
-                          <OrganizerAnimatedIcon />
-                      </div>
-                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-indigo-300 transition-colors">Organizer</h2>
-                      <p className="text-gray-400 leading-relaxed text-sm">
-                          Logical organization based on function. Separate User vs. Computer policies and group "like-minded" settings.
-                      </p>
-                  </div>
-              </button>
-
-              {/* Consolidator Card */}
-              <button 
-                  onClick={() => setViewMode('consolidator')}
-                  className="group relative p-8 bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 hover:border-sky-500/50 transition-all duration-300 text-left hover:shadow-[0_0_40px_rgba(14,165,233,0.25)] hover:-translate-y-1 overflow-hidden"
-              >
-                   <div className="absolute inset-0 bg-gradient-to-br from-sky-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                   <div className="relative z-10">
-                      <div className="w-16 h-16 bg-sky-900/30 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 border border-sky-500/20 overflow-hidden">
-                          <ConsolidatorAnimatedIcon />
-                      </div>
-                      <h2 className="text-2xl font-bold text-gray-100 mb-3 group-hover:text-sky-300 transition-colors">Consolidator</h2>
-                      <p className="text-gray-400 leading-relaxed text-sm">
-                           Merge fragmented policies into high-performance baselines to reduce processing overhead.
-                      </p>
-                   </div>
-              </button>
-          </div>
-          
-          <div className="mt-12 flex flex-col items-center space-y-4">
-               <div className="flex space-x-4">
-                   <button 
-                        onClick={() => setIsScriptsModalOpen(true)} 
-                        className="inline-flex items-center px-6 py-3 border border-cyan-600/50 text-sm font-medium rounded-md text-cyan-300 bg-cyan-900/30 hover:bg-cyan-900/60 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 transition-colors"
-                    >
-                        <BookOpenIcon className="w-5 h-5 mr-2" />
-                        Scripts & Tools Library
-                    </button>
-
-                    {/* Upload Folder Button (Restored) */}
-                    <button
-                        onClick={() => {
-                            setViewMode('analyzer');
-                            setAnalyzerTab('folder');
-                        }}
-                        className="inline-flex items-center px-6 py-3 border border-indigo-500/50 text-sm font-medium rounded-md text-indigo-300 bg-indigo-900/30 hover:bg-indigo-900/60 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-500 transition-colors"
-                    >
-                        <FolderOpenIcon className="w-5 h-5 mr-2" />
-                        Upload GPO Folder
-                    </button>
-                    
-                    {/* Load Session File Button */}
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleSessionFileUpload} 
-                        className="hidden" 
-                        accept=".json" 
-                    />
-                    <button 
-                        onClick={() => fileInputRef.current?.click()} 
-                        className="inline-flex items-center px-6 py-3 border border-gray-600/50 text-sm font-medium rounded-md text-gray-300 bg-gray-800/50 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition-colors"
-                    >
-                        <UploadIcon className="w-5 h-5 mr-2" />
-                        Load Analysis File
-                    </button>
-               </div>
-
-               {isSessionAvailable && (
-                    <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 p-6 text-center mt-8 max-w-md w-full animate-fade-in">
-                        <h3 className="text-lg font-medium text-gray-200 mb-2">Resume Previous Session?</h3>
-                        <p className="text-gray-400 mb-4 text-sm">You have a previously saved analysis in local storage.</p>
-                        <div className="flex justify-center items-center space-x-4">
-                            <button onClick={handleLoadSession} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-cyan-600 hover:bg-cyan-700 transition-colors">
-                                <LoadIcon className="w-4 h-4 mr-2" /> Resume
-                            </button>
-                            <button onClick={handleClearSession} className="inline-flex items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 transition-colors">
-                                <TrashIcon className="w-4 h-4 mr-2" /> Clear
-                            </button>
-                        </div>
-                    </div>
-                )}
-          </div>
-      </div>
-  );
-
-  const renderAnalyzer = () => {
-      const isLoading = appState === 'analyzing';
-      const showResults = (appState === 'analyzing' && analysisResult) || appState === 'displaying_analysis';
-
-      // Back Button Navigation Header
-      const navHeader = (
-        <div className="mb-6 flex items-center justify-between">
-            <button 
-                onClick={handleHome}
-                disabled={isLoading}
-                className="inline-flex items-center text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
-            >
-                <ArrowLeftIcon className="w-5 h-5 mr-2" />
-                Back to Home
-            </button>
-            <h2 className="text-xl font-semibold text-gray-300 hidden sm:block">GPO Analyzer</h2>
-        </div>
-      );
-
-      if (error) {
-         return (
-            <div className="max-w-4xl mx-auto">
-                {navHeader}
-                <div className="bg-red-900/50 border border-red-700 text-red-300 p-6 rounded-lg shadow-lg animate-fade-in">
-                    <h3 className="font-bold text-xl mb-2">Analysis Failed</h3>
-                    <p className="mb-4">{error}</p>
-                    <div className="flex space-x-4">
-                        <button onClick={handleReset} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors">
-                            Try Again
-                        </button>
-                        <button onClick={() => setIsSettingsModalOpen(true)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-md transition-colors">
-                            Check Settings (API Key)
-                        </button>
-                    </div>
-                </div>
-            </div>
-         );
-      }
-
-      if (showResults && analysisResult) {
-         return (
-            <div className="w-full max-w-[98%] mx-auto animate-fade-in">
-                 {navHeader}
-                 
-                 {appState === 'analyzing' && (
-                    <AnalysisProgress 
-                        progress={progress} 
-                        title="Analyzing Batch..." 
-                        logs={logs}
-                        compact={true}
-                    />
-                 )}
-                 
-                 <ReportToolbar 
-                        analysis={analysisResult.analysis}
-                        script={analysisResult.script}
-                        onClearSession={handleClearSession}
-                        onSaveSession={() => {
-                            try {
-                                localStorage.setItem(SAVE_KEY, JSON.stringify(analysisResult));
-                                setIsSessionAvailable(true);
-                            } catch (e) {
-                                alert("Failed to save session (data too large).");
-                            }
-                        }}
-                 />
-                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                        <div className="lg:col-span-3 flex flex-col space-y-8">
-                            <AnalysisDisplay analysis={analysisResult.analysis} />
-                        </div>
-                        <div className="lg:col-span-2 flex flex-col space-y-8">
-                            <ScriptDisplay script={analysisResult.script} />
-                            <AnalyzedGpoList analysis={analysisResult.analysis} />
-                        </div>
-                 </div>
-                 
-                 {appState === 'displaying_analysis' && (
-                     <div className="flex justify-center space-x-4 mt-8 mb-8">
-                        <button onClick={handleReset} className="inline-flex justify-center items-center px-6 py-3 border border-gray-600 text-base font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 transition-colors">
-                            Start New Analysis
-                        </button>
-                     </div>
-                 )}
-            </div>
-         )
-      }
-
-      if (appState === 'analyzing' && !analysisResult) {
-         return (
-            <div className="max-w-4xl mx-auto">
-                 {navHeader}
-                 <AnalysisProgress 
-                    progress={progress} 
-                    title="Initializing Analysis..." 
-                    logs={logs} 
-                />
-            </div>
-         );
-      }
-
-      // Default Input State
-      return (
-          <div className="max-w-4xl mx-auto animate-fade-in">
-            {navHeader}
-            <div className="text-center mb-8">
-                <p className="text-gray-400">
-                    Paste or upload GPO reports to detect conflicts, security issues, and optimization opportunities.
-                </p>
-            </div>
-            
-            <div className="mb-4 flex space-x-2 p-1 bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 self-start inline-block">
-                <TabButton tabId="paste" activeTab={analyzerTab} setTab={setAnalyzerTab}>All-vs-All Paste</TabButton>
-                <TabButton tabId="one-to-all" activeTab={analyzerTab} setTab={setAnalyzerTab}>1-to-All Paste</TabButton>
-                <TabButton tabId="folder" activeTab={analyzerTab} setTab={setAnalyzerTab}>File Upload</TabButton>
-            </div>
-
-            {analyzerTab === 'paste' && (
-                <GpoInputForm onGenerate={(gpos) => handleGenerate({ comparisonGpos: gpos })} isLoading={isLoading} />
-            )}
-            {analyzerTab === 'one-to-all' && (
-                <GpoOneToAllInputForm onGenerate={handleGenerate} isLoading={isLoading} />
-            )}
-            {analyzerTab === 'folder' && (
-                <GpoFolderInput onGenerate={(gpos) => handleGenerate({ comparisonGpos: gpos })} isLoading={isLoading} />
-            )}
-          </div>
-      );
-  }
-
-  const renderOrganizer = () => {
-    const isLoading = appState === 'organizing';
-
-    const navHeader = (
-        <div className="mb-6 flex items-center justify-between">
-            <button 
-                onClick={handleHome}
-                disabled={isLoading}
-                className="inline-flex items-center text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
-            >
-                <ArrowLeftIcon className="w-5 h-5 mr-2" />
-                Back to Home
-            </button>
-            <h2 className="text-xl font-semibold text-gray-300 hidden sm:block">GPO Organizer</h2>
-        </div>
-    );
-
-    if (error) {
-        return (
-           <div className="max-w-4xl mx-auto">
-               {navHeader}
-               <div className="bg-red-900/50 border border-red-700 text-red-300 p-6 rounded-lg shadow-lg animate-fade-in">
-                   <h3 className="font-bold text-xl mb-2">Analysis Failed</h3>
-                   <p className="mb-4">{error}</p>
-                   <div className="flex space-x-4">
-                       <button onClick={handleReset} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors">
-                           Try Again
-                       </button>
-                       <button onClick={() => setIsSettingsModalOpen(true)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-md transition-colors">
-                            Check Settings (API Key)
-                       </button>
-                   </div>
-               </div>
-           </div>
-        );
-     }
-
-     if ((appState === 'organizing' || appState === 'displaying_organization') && organizationResult) {
-        return (
-            <div className="w-full max-w-[98%] mx-auto animate-fade-in">
-                {navHeader}
-                {appState === 'organizing' && (
-                    <div className="mb-8">
-                         <AnalysisProgress 
-                            progress={progress} 
-                            title="Analyzing Logical Structure..." 
-                            logs={logs} 
-                            compact={true}
-                        />
-                    </div>
-                )}
-                
-                <OrganizationDisplay result={organizationResult} />
-                
-                <div className="flex justify-center space-x-4 mt-12 mb-12">
-                   <button onClick={handleReset} className="inline-flex justify-center items-center px-6 py-3 border border-gray-600 text-base font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 transition-colors">
-                      Start New Organization Analysis
-                   </button>
-                </div>
-            </div>
-        )
-    }
-
-    if (appState === 'organizing' && !organizationResult) {
-        return (
-           <div className="max-w-4xl mx-auto">
-                {navHeader}
-                <AnalysisProgress 
-                   progress={progress} 
-                   title="Scanning Policy Content..." 
-                   logs={logs} 
-               />
-           </div>
-        );
-    }
+    const handleGenerate = useCallback(async (gpoData: any) => {
+        const contents = gpoData.baseGpo ? [...gpoData.comparisonGpos, gpoData.baseGpo] : gpoData.comparisonGpos;
+        if (logicMode === 'organization') {
+            executeOrganizer(contents);
+        } else {
+            executeAnalyzer(gpoData);
+        }
+    }, [logicMode]);
 
     return (
-        <div className="max-w-4xl mx-auto animate-fade-in">
-            {navHeader}
-            <div className="text-center mb-8">
-                <p className="text-gray-400">
-                    Paste or upload GPO reports to separate User vs. Computer policies and group settings by function (e.g., Application Servers, Workstations).
-                    This analysis ignores current linking and focuses purely on content.
-                </p>
-            </div>
+        <div className="min-h-screen flex flex-col font-sans text-slate-100 selection:bg-cyan-500/30">
+            <Header isProTier={isProTier} onOpenSettings={() => setIsSettingsModalOpen(true)} />
             
-            <div className="mb-4 flex space-x-2 p-1 bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 self-start inline-block">
-                <TabButton tabId="paste" activeTab={organizerTab} setTab={setOrganizerTab}>Paste GPOs</TabButton>
-                <TabButton tabId="folder" activeTab={organizerTab} setTab={setOrganizerTab}>File Upload</TabButton>
-            </div>
-
-            {organizerTab === 'paste' && (
-                <GpoInputForm onGenerate={handleOrganization} isLoading={isLoading} />
-            )}
-            {organizerTab === 'folder' && (
-                <GpoFolderInput onGenerate={handleOrganization} isLoading={isLoading} />
-            )}
-        </div>
-    );
-  }
-
-  const renderConsolidator = () => {
-      const isLoading = appState === 'consolidating';
-
-       const navHeader = (
-        <div className="mb-6 flex items-center justify-between">
-            <button 
-                onClick={handleHome}
-                disabled={isLoading}
-                className="inline-flex items-center text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
-            >
-                <ArrowLeftIcon className="w-5 h-5 mr-2" />
-                Back to Home
-            </button>
-            <h2 className="text-xl font-semibold text-gray-300 hidden sm:block">GPO Consolidator</h2>
-        </div>
-      );
-
-      if (error) {
-         return (
-            <div className="max-w-4xl mx-auto">
-                {navHeader}
-                <div className="bg-red-900/50 border border-red-700 text-red-300 p-6 rounded-lg shadow-lg animate-fade-in">
-                    <h3 className="font-bold text-xl mb-2">Consolidation Failed</h3>
-                    <p className="mb-4">{error}</p>
-                    <div className="flex space-x-4">
-                        <button onClick={handleReset} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors">
-                            Try Again
-                        </button>
-                        <button onClick={() => setIsSettingsModalOpen(true)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-md transition-colors">
-                            Check Settings (API Key)
-                        </button>
+            {appState === 'error' && (
+                <div className="bg-red-950/40 border-y border-red-500/30 py-4 px-6 flex flex-col items-center animate-fade-in">
+                    <div className="flex items-center justify-between w-full max-w-6xl">
+                        <div className="flex items-center text-red-200">
+                            <span className="font-bold mr-2">NEXUS LINK FAILURE:</span>
+                            <span className="text-sm opacity-90">{error}</span>
+                        </div>
+                        <button onClick={handleReset} className="px-4 py-1.5 bg-red-600 hover:bg-red-500 rounded-md text-xs font-bold">Retry</button>
                     </div>
                 </div>
-            </div>
-         );
-      }
+            )}
 
-      if ((appState === 'consolidating' || appState === 'displaying_consolidation') && consolidationResult) {
-          return (
-              <div className="w-full max-w-[98%] mx-auto animate-fade-in">
-                  {navHeader}
-                  {appState === 'consolidating' && (
-                        <div className="mb-8">
-                             <AnalysisProgress 
-                                progress={progress} 
-                                title="Consolidating Policies..." 
-                                logs={logs} 
-                                compact={true}
-                            />
+            <main className="flex-grow container mx-auto px-6 py-12 max-w-[100%]">
+                {viewMode === 'landing' && (
+                    <div className="max-w-7xl mx-auto animate-fade-in">
+                        <div className="text-center mb-16">
+                            <h1 className="nexus-text text-5xl md:text-6xl font-black mb-6">Carlisle Policy Control</h1>
+                            <p className="text-xl text-gray-400 font-light max-w-2xl mx-auto leading-relaxed">
+                                Select your data ingestion method to begin forest-wide intelligence processing.
+                            </p>
                         </div>
-                  )}
-                  
-                  <ConsolidationDisplay result={consolidationResult} />
-                  
-                  <div className="flex justify-center space-x-4 mt-12 mb-12">
-                     <button onClick={handleReset} className="inline-flex justify-center items-center px-6 py-3 border border-gray-600 text-base font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 transition-colors">
-                        Consolidate More GPOs
-                     </button>
-                  </div>
-              </div>
-          )
-      }
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <button onClick={() => { setInputMethod('workshop'); setViewMode('input'); }} className="group p-10 hologram-card rounded-3xl text-left border border-white/5 hover:border-cyan-500/40 transition-all">
+                                <div className="w-12 h-12 bg-cyan-500/10 rounded-2xl flex items-center justify-center mb-6 border border-cyan-500/20 group-hover:scale-110 transition-transform">
+                                   <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                </div>
+                                <h2 className="text-xl font-bold mb-4 group-hover:text-cyan-300 transition-colors">Interactive Workshop</h2>
+                                <p className="text-gray-400 text-sm leading-relaxed">Paste GPO reports directly or drop single files into distinct comparison slots.</p>
+                            </button>
+                            <button onClick={() => { setInputMethod('bulk'); setViewMode('input'); }} className="group p-10 hologram-card rounded-3xl text-left border border-indigo-500/20 hover:border-indigo-500/60 transition-all bg-indigo-500/5">
+                                <div className="w-12 h-12 bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-6 border border-indigo-500/40 group-hover:scale-110 transition-transform">
+                                   <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
+                                </div>
+                                <h2 className="text-xl font-bold mb-4 group-hover:text-indigo-300 transition-colors">Bulk Command Center</h2>
+                                <p className="text-gray-400 text-sm leading-relaxed">Stream entire folders or use 1-to-All Forest Sync scripts for mass auditing.</p>
+                            </button>
+                            <button onClick={() => setViewMode('consolidator')} className="group p-10 hologram-card rounded-3xl text-left border border-white/5 hover:border-orange-500/40 transition-all">
+                                <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center mb-6 border border-orange-500/20 group-hover:scale-110 transition-transform">
+                                   <svg className="w-6 h-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 0015 0m-15 0a7.5 7.5 0 1115 0m-15 0H3m16.5 0H21m-1.5 0H12m0 0V4.5m0 15V12" /></svg>
+                                </div>
+                                <h2 className="text-xl font-bold mb-4 group-hover:text-orange-300 transition-colors">Consolidator Forge</h2>
+                                <p className="text-gray-400 text-sm leading-relaxed">Merge fragmented policies to minimize login latency and forest complexity.</p>
+                            </button>
+                        </div>
+                    </div>
+                )}
 
-      if (appState === 'consolidating' && !consolidationResult) {
-         return (
-            <div className="max-w-4xl mx-auto">
-                 {navHeader}
-                 <AnalysisProgress 
-                    progress={progress} 
-                    title="Analyzing Structure..." 
-                    logs={logs} 
-                />
-            </div>
-         );
-      }
+                {viewMode === 'input' && appState !== 'error' && (
+                   <div className="max-w-6xl mx-auto">
+                        <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
+                            <button onClick={handleHome} className="text-cyan-500 hover:text-cyan-400 flex items-center font-mono text-sm tracking-widest uppercase">
+                                <span className="mr-2">&larr;</span> Terminate Session
+                            </button>
+                            
+                            {appState === 'idle' && (
+                                <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/10 shadow-2xl">
+                                    <button 
+                                        onClick={() => setLogicMode('analysis')}
+                                        className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${logicMode === 'analysis' ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/40' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        Audit Conflicts
+                                    </button>
+                                    <button 
+                                        onClick={() => setLogicMode('organization')}
+                                        className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${logicMode === 'organization' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        Functional Logic
+                                    </button>
+                                </div>
+                            )}
+                        </div>
 
-      return (
-          <div className="max-w-4xl mx-auto animate-fade-in">
-              {navHeader}
-              <div className="text-center mb-8">
-                <p className="text-gray-400">
-                    Merge multiple fragmented GPOs into a single, high-performance policy to reduce login times.
-                </p>
-              </div>
-              <GpoConsolidatorForm onGenerate={handleConsolidate} isLoading={isLoading} />
-          </div>
-      );
-  }
+                        {appState === 'processing' ? (
+                            <AnalysisProgress progress={progress} title={logicMode === 'analysis' ? "AUDITING FOREST VECTORS..." : "MAPPING FUNCTIONAL STRUCTURES..."} logs={logs} />
+                        ) : appState === 'displaying_analysis' && analysisResult ? (
+                            <div className="w-full space-y-10 animate-fade-in">
+                                <AnalysisDisplay analysis={analysisResult.analysis} />
+                            </div>
+                        ) : appState === 'displaying_organization' && organizationResult ? (
+                             <OrganizationDisplay result={organizationResult} />
+                        ) : (
+                            <div className="animate-fade-in">
+                                <div className="flex space-x-3 mb-8 bg-slate-950/40 p-1.5 rounded-2xl border border-white/5 w-fit mx-auto shadow-inner">
+                                    <button onClick={() => setInputMethod('workshop')} className={`px-8 py-3 rounded-xl font-bold text-sm transition-all ${inputMethod === 'workshop' ? 'bg-cyan-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Interactive Workshop</button>
+                                    <button onClick={() => setInputMethod('bulk')} className={`px-8 py-3 rounded-xl font-bold text-sm transition-all ${inputMethod === 'bulk' ? 'bg-cyan-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Bulk Repository</button>
+                                </div>
+                                <div className="max-w-4xl mx-auto">
+                                    {inputMethod === 'workshop' && <GpoInputForm onGenerate={(g) => handleGenerate({ comparisonGpos: g })} isLoading={false} />}
+                                    {inputMethod === 'bulk' && (
+                                        <div className="space-y-6">
+                                            <div className="flex space-x-2 bg-slate-900/50 p-1 rounded-lg border border-white/5 w-fit">
+                                                <button onClick={() => setBulkSubTab('folder')} className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${bulkSubTab === 'folder' ? 'bg-indigo-600 text-white' : 'text-gray-500'}`}>Upload Stream</button>
+                                                <button onClick={() => setBulkSubTab('sync')} className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${bulkSubTab === 'sync' ? 'bg-indigo-600 text-white' : 'text-gray-500'}`}>Forest Sync (1-to-All)</button>
+                                            </div>
+                                            {bulkSubTab === 'folder' ? (
+                                                <GpoFolderInput onGenerate={(g) => handleGenerate({ comparisonGpos: g })} isLoading={false} />
+                                            ) : (
+                                                <GpoOneToAllInputForm onGenerate={handleGenerate} isLoading={false} />
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                   </div>
+                )}
 
-  return (
-    <div className="min-h-screen flex flex-col font-sans text-gray-100 selection:bg-cyan-500/30">
-      <Header onOpenSettings={() => setIsSettingsModalOpen(true)} />
-
-      <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-0 max-w-[100%]">
-        {viewMode === 'landing' && renderLanding()}
-        {viewMode === 'analyzer' && renderAnalyzer()}
-        {viewMode === 'organizer' && renderOrganizer()}
-        {viewMode === 'consolidator' && renderConsolidator()}
-      </main>
-
-      <footer className="bg-gray-900/50 border-t border-gray-800 mt-auto">
-        <div className="container mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-          <p title="Created by Damien M. Gibson" className="cursor-help">GPO Patrol &copy; {new Date().getFullYear()} - Advanced Group Policy Analysis Tool</p>
-          <p className="mt-2 text-xs text-gray-600">
-            Secure client-side analysis. No data is stored on external servers. 
-            <button onClick={() => setIsSettingsModalOpen(true)} className="ml-1 text-cyan-500 hover:underline">Privacy Settings</button>
-          </p>
+                {viewMode === 'consolidator' && (
+                     <div className="max-w-4xl mx-auto animate-fade-in">
+                        <button onClick={handleHome} className="mb-8 text-orange-500 hover:text-orange-400 flex items-center font-mono text-sm tracking-widest uppercase">
+                            <span className="mr-2">&larr;</span> Terminate Session
+                        </button>
+                        <GpoConsolidatorForm onGenerate={() => {}} isLoading={false} />
+                     </div>
+                )}
+            </main>
+            <footer className="p-10 text-center text-gray-600 text-[10px] font-mono tracking-[0.4em] uppercase border-t border-white/5 bg-slate-950/40">
+                GPO SENTRY &bull; Forensic Forest Intelligence &bull; v4.2.0-PRO
+            </footer>
+            <SettingsModal isOpen={isSettingsModalOpen} isProTier={isProTier} onUpgradeTier={handleUpgradeTier} onClose={() => setIsSettingsModalOpen(false)} />
         </div>
-      </footer>
-      
-      <ScriptsModal 
-        isOpen={isScriptsModalOpen} 
-        onClose={() => setIsScriptsModalOpen(false)} 
-        generatedScript={analysisResult?.script}
-      />
-      
-      <SettingsModal 
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
-    </div>
-  );
+    );
 };
 
 export default App;

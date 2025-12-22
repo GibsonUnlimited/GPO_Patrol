@@ -39,6 +39,7 @@ export interface GpoDetails {
   configuredSettings?: Array<{
       name: string;
       value: string;
+      policyType?: 'User' | 'Computer';
   }>;
 }
 
@@ -125,10 +126,14 @@ export interface OrganizationRecommendation {
   type: 'User' | 'Computer' | 'Mixed'; 
 }
 
+// Fixed missing properties used in OrganizationDisplay component (entropyScore and remediationScript)
 export interface OrganizationAnalysis {
   summary: string;
+  entropyScore?: number;
+  remediationScript?: string;
   classifications: GpoClassification[];
   recommendations: OrganizationRecommendation[];
+  gpoDetails: GpoDetails[];
 }
 
 export interface LogEntry {

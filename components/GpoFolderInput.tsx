@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 
 interface GpoFolderInputProps {
@@ -5,7 +6,7 @@ interface GpoFolderInputProps {
   isLoading: boolean;
 }
 
-const MAX_SIZE_BYTES = 5_000_000; // 5MB limit
+const MAX_SIZE_BYTES = 100_000_000; // Increased to 100MB for bulk
 
 const FolderIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -13,85 +14,109 @@ const FolderIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
+const BulkIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.5h.01m0 0H3m.01 0h.01m0 0H3m.01 0h.01M3 21h.01m0 0H3m.01 0h.01m0 0H3m.01 0h.01M3 6h.01m0 0H3m.01 0h.01m0 0H3m.01 0h.01M11 13.5h.01m0 0H11m.01 0h.01m0 0H11m.01 0h.01M11 21h.01m0 0H11m.01 0h.01m0 0H11m.01 0h.01M11 6h.01m0 0H11m.01 0h.01m0 0H11m.01 0h.01M19 13.5h.01m0 0H19m.01 0h.01m0 0H19m.01 0h.01M19 21h.01m0 0H19m.01 0h.01m0 0H19m.01 0h.01M19 6h.01m0 0H19m.01 0h.01m0 0H19m.01 0h.01" />
+  </svg>
+);
 
 export const GpoFolderInput: React.FC<GpoFolderInputProps> = ({ onGenerate, isLoading }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [totalSize, setTotalSize] = useState(0);
+  const [isFolderMode, setIsFolderMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectFilesClick = () => {
-    fileInputRef.current?.click();
+    if (isFolderMode) {
+      folderInputRef.current?.click();
+    } else {
+      fileInputRef.current?.click();
+    }
   };
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
-    setFiles([]);
-    setTotalSize(0);
-
     if (event.target.files) {
         const selectedFiles = Array.from(event.target.files);
-        const validFiles = selectedFiles.filter((file: File) => file.name.endsWith('.xml') || file.name.endsWith('.html'));
-        // FIX: The type inference for .reduce() was causing issues, leading to an 'unknown' type.
-        // A simple loop is more robust for calculating the total size.
+        const validFiles = selectedFiles.filter((file: File) => 
+          file.name.toLowerCase().endsWith('.xml') || 
+          file.name.toLowerCase().endsWith('.html')
+        );
+        
         let currentSize = 0;
         for (const file of validFiles) {
-            // Fix: Cast file to 'File' to resolve 'unknown' type error.
             currentSize += (file as File).size;
         }
 
-        if (validFiles.length < 2) {
-            setError(`Please select at least two XML or HTML report files. You selected ${validFiles.length} valid file(s).`);
+        if (validFiles.length < 1) {
+            setError(`No valid XML/HTML GPO reports found in your selection.`);
             setFiles([]);
             setTotalSize(0);
         } else if (currentSize > MAX_SIZE_BYTES) {
-            setError(`Total file size exceeds the ${(MAX_SIZE_BYTES / (1024 * 1024)).toFixed(1)} MB limit. Please select a smaller set of files.`);
+            setError(`Total volume exceeds ${(MAX_SIZE_BYTES / (1024 * 1024)).toFixed(0)} MB. Reduce the number of GPOs.`);
             setFiles([]);
             setTotalSize(0);
         } else {
             if (validFiles.length < selectedFiles.length) {
-                 setError('Some selected files were not XML or HTML and have been ignored.');
+                 console.warn(`${selectedFiles.length - validFiles.length} non-GPO files ignored.`);
             }
             setFiles(validFiles);
             setTotalSize(currentSize);
         }
     }
-     if(event.target) {
-        event.target.value = '';
-    }
+     if(event.target) event.target.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (files.length < 2) {
-      alert("Please select at least two GPO reports.");
-      return;
-    }
+    if (files.length === 0) return;
 
     try {
       const fileContentsPromises = files.map(file => file.text());
       const gpoContents = await Promise.all(fileContentsPromises);
       onGenerate(gpoContents);
     } catch(err) {
-        setError("Failed to read file contents. Please try selecting the files again.");
-        console.error(err);
+        setError("Nexus Link: Failed to read local filesystem stream.");
     }
   };
 
   const isSizeExceeded = totalSize > MAX_SIZE_BYTES;
   const sizeInMb = (totalSize / (1024 * 1024)).toFixed(2);
-  const maxSizeInMb = (MAX_SIZE_BYTES / (1024 * 1024)).toFixed(1);
+  const maxSizeInMb = (MAX_SIZE_BYTES / (1024 * 1024)).toFixed(0);
 
   return (
-    <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-6 h-full flex flex-col">
-       <div className="mb-4">
-            <h2 className="text-xl font-bold text-cyan-300">Select GPO Export Files</h2>
-            <p className="text-gray-400 text-sm">
-                Select multiple exported GPO reports (.xml or .html). The tool will scan and analyze all valid reports you choose.
-            </p>
+    <div className="hologram-card rounded-2xl p-8 h-full flex flex-col border border-cyan-500/20">
+       <div className="mb-6">
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="nexus-text text-xl font-bold">Bulk GPO Import</h2>
+                <p className="text-gray-400 text-sm mt-1">
+                    Synchronize entire directories of exported reports to the intelligence engine.
+                </p>
+              </div>
+              <div className="flex bg-slate-950/60 p-1 rounded-lg border border-white/5">
+                  <button 
+                    type="button"
+                    onClick={() => setIsFolderMode(false)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${!isFolderMode ? 'bg-cyan-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Files
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setIsFolderMode(true)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${isFolderMode ? 'bg-cyan-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Folder
+                  </button>
+              </div>
+            </div>
       </div>
       
       <div className="flex-grow flex flex-col space-y-4">
+        {/* Hidden File Inputs */}
         <input
             type="file"
             ref={fileInputRef}
@@ -99,49 +124,81 @@ export const GpoFolderInput: React.FC<GpoFolderInputProps> = ({ onGenerate, isLo
             multiple
             accept=".xml,.html"
             className="hidden"
-            aria-hidden="true"
         />
+        <input
+            type="file"
+            ref={folderInputRef}
+            onChange={handleFileChange}
+            // @ts-ignore
+            webkitdirectory=""
+            directory=""
+            multiple
+            className="hidden"
+        />
+
         <button
           type="button"
           onClick={handleSelectFilesClick}
           disabled={isLoading}
-          className="w-full inline-flex justify-center items-center px-4 py-3 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 disabled:opacity-50 transition-colors"
+          className="w-full py-12 border-2 border-dashed border-cyan-500/20 rounded-2xl bg-cyan-500/5 hover:bg-cyan-500/10 hover:border-cyan-500/40 transition-all flex flex-col items-center justify-center group"
         >
-          <FolderIcon className="w-5 h-5 mr-2" />
-          Select GPO Report Files
+          {isFolderMode ? (
+            <FolderIcon className="w-12 h-12 text-cyan-500/60 mb-4 group-hover:scale-110 transition-transform" />
+          ) : (
+            <BulkIcon className="w-12 h-12 text-cyan-500/60 mb-4 group-hover:scale-110 transition-transform" />
+          )}
+          <span className="text-cyan-300 font-bold tracking-widest uppercase text-sm">
+            {isFolderMode ? 'Upload Entire GPO Folder' : 'Select Multiple GPO Reports'}
+          </span>
+          <span className="text-gray-500 text-xs mt-2">
+            {isFolderMode ? 'Will scan all XML/HTML files in chosen directory' : 'Supports CTRL+A or Shift-Click'}
+          </span>
         </button>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {error && (
+          <div className="bg-red-950/20 border border-red-500/30 p-3 rounded-lg flex items-center text-red-300 text-xs">
+            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            {error}
+          </div>
+        )}
 
-        <div className="bg-gray-900/50 p-3 rounded-md border border-gray-600 flex-grow min-h-[150px] flex flex-col">
-            {files.length > 0 ? (
-                <>
-                    <div className="flex justify-between items-baseline">
-                        <h3 className="text-gray-300 font-medium mb-2">Selected {files.length} reports:</h3>
-                         <div className={`text-xs font-mono ${isSizeExceeded ? 'text-red-400' : 'text-gray-400'}`}>
-                            {sizeInMb} MB / {maxSizeInMb} MB
-                        </div>
-                    </div>
-                    <ul className="text-sm text-gray-400 space-y-1 pr-2 overflow-y-auto">
-                    {files.map(file => (
-                        <li key={file.name} className="truncate font-mono">{file.name}</li>
-                    ))}
-                    </ul>
-                </>
-            ) : (
-                <div className="flex-grow flex items-center justify-center text-center text-gray-500">
-                    <p>Awaiting file selection...</p>
-                </div>
-            )}
-        </div>
+        {files.length > 0 && (
+          <div className="bg-slate-950/50 p-4 rounded-xl border border-white/5 flex-grow max-h-60 overflow-hidden flex flex-col">
+              <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                    Queued: <span className="text-cyan-400">{files.length} GPOs</span>
+                  </h3>
+                   <div className={`text-[10px] font-mono ${isSizeExceeded ? 'text-red-400' : 'text-gray-500'}`}>
+                      {sizeInMb} MB / {maxSizeInMb} MB
+                  </div>
+              </div>
+              <ul className="text-xs text-gray-400 space-y-1.5 pr-2 overflow-y-auto custom-scrollbar font-mono">
+              {files.map((file, i) => (
+                  <li key={i} className="flex items-center">
+                    <span className="text-cyan-500/40 mr-2">├</span>
+                    <span className="truncate">{file.name}</span>
+                  </li>
+              ))}
+              </ul>
+          </div>
+        )}
         
-        <form onSubmit={handleSubmit} className="mt-auto">
+        <form onSubmit={handleSubmit} className="pt-4">
             <button
               type="submit"
-              disabled={isLoading || files.length < 2 || isSizeExceeded}
-              className="mt-4 w-full inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-cyan-600 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all duration-200"
+              disabled={isLoading || files.length === 0 || isSizeExceeded}
+              className="w-full relative overflow-hidden group inline-flex justify-center items-center px-6 py-4 border border-cyan-500/50 text-sm font-bold rounded-xl text-white bg-cyan-600/20 hover:bg-cyan-600/40 transition-all duration-500 shadow-[0_0_20px_rgba(6,182,212,0.1)] disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Analyzing...' : 'Generate Analysis & Script'}
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 via-cyan-500/10 to-cyan-500/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+              {isLoading ? (
+                <span className="flex items-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    INITIALIZING BANK OF {files.length} GPOs...
+                </span>
+              ) : `LAUNCH FOREST-WIDE SCAN (${files.length} GPOs)`}
             </button>
         </form>
       </div>

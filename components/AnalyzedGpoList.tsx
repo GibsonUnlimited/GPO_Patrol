@@ -29,6 +29,12 @@ const SearchIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     </svg>
 );
 
+const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+);
+
 interface GpoHoverCardProps {
     gpoName: string;
     details: GpoDetails | undefined;
@@ -212,6 +218,7 @@ export const AnalyzedGpoList: React.FC<AnalyzedGpoListProps> = ({ analysis }) =>
     const [hoverPos, setHoverPos] = useState({ top: 0, left: 0 });
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGpo, setSelectedGpo] = useState<string | null>(null);
+    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const hoverTimeout = useRef<number | null>(null);
 
     const gpoData = useMemo(() => {
@@ -285,7 +292,7 @@ export const AnalyzedGpoList: React.FC<AnalyzedGpoListProps> = ({ analysis }) =>
         );
     }, [gpoData.allGpos, searchTerm]);
 
-    const handleMouseEnterGpo = (e: React.MouseEvent<HTMLLIElement>, name: string) => {
+    const handleMouseEnterGpo = (e: React.MouseEvent<HTMLDivElement>, name: string) => {
         if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
         
         const rect = e.currentTarget.getBoundingClientRect();
@@ -310,6 +317,19 @@ export const AnalyzedGpoList: React.FC<AnalyzedGpoListProps> = ({ analysis }) =>
 
     const handleMouseEnterTooltip = () => {
         if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+    };
+
+    const toggleExpand = (name: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent opening modal
+        setExpandedItems(prev => {
+            const next = new Set(prev);
+            if (next.has(name)) {
+                next.delete(name);
+            } else {
+                next.add(name);
+            }
+            return next;
+        });
     };
 
     return (
@@ -358,6 +378,9 @@ export const AnalyzedGpoList: React.FC<AnalyzedGpoListProps> = ({ analysis }) =>
                             const relations = gpoData.relations[gpoName];
                             const hasConflicts = relations?.conflicts?.length > 0;
                             const hasOverlaps = relations?.overlaps?.length > 0;
+                            const details = gpoData.gpoDetails.find(d => d.name === gpoName);
+                            const hasLinks = details?.linkedOUs && details.linkedOUs.length > 0;
+                            const isExpanded = expandedItems.has(gpoName);
 
                             const dot = hasConflicts ? (
                                 <span className="w-2 h-2 bg-red-500 rounded-full mr-3 flex-shrink-0" title="Has Conflicts"></span>
@@ -370,16 +393,44 @@ export const AnalyzedGpoList: React.FC<AnalyzedGpoListProps> = ({ analysis }) =>
                             return (
                                 <li 
                                     key={gpoName}
-                                    onMouseEnter={(e) => handleMouseEnterGpo(e, gpoName)}
-                                    onMouseLeave={handleMouseLeave}
-                                    onClick={() => setSelectedGpo(gpoName)}
-                                    className="flex items-center p-2 rounded-md bg-gray-700/50 hover:bg-cyan-600/50 transition-colors cursor-pointer text-sm font-mono relative animate-fade-in group"
+                                    className="rounded-md bg-gray-700/50 mb-1.5 overflow-hidden animate-fade-in group border border-transparent hover:border-gray-600 transition-colors"
                                 >
-                                    {dot}
-                                    <span className="break-words flex-grow">{gpoName}</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                                    </svg>
+                                    <div 
+                                        className="flex items-center p-2 cursor-pointer hover:bg-cyan-600/20 transition-colors"
+                                        onClick={() => setSelectedGpo(gpoName)}
+                                        onMouseEnter={(e) => handleMouseEnterGpo(e, gpoName)}
+                                        onMouseLeave={handleMouseLeave}
+                                    >
+                                        {dot}
+                                        <span className="break-words flex-grow text-sm font-mono text-gray-200">{gpoName}</span>
+                                        
+                                        {hasLinks && (
+                                            <button
+                                                onClick={(e) => toggleExpand(gpoName, e)}
+                                                className={`p-1 mr-2 rounded hover:bg-white/10 transition-all ${isExpanded ? 'bg-black/20' : ''}`}
+                                                title={isExpanded ? "Collapse Links" : "View Linked OUs"}
+                                            >
+                                                <ChevronDownIcon className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </button>
+                                        )}
+
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                        </svg>
+                                    </div>
+
+                                    {isExpanded && hasLinks && (
+                                        <div className="bg-black/20 px-3 py-2 border-t border-gray-600/30">
+                                            <p className="text-[10px] uppercase font-bold text-gray-500 mb-1 ml-1">Linked Organizational Units</p>
+                                            <ul className="space-y-1 ml-1">
+                                                {details?.linkedOUs.map(ou => (
+                                                    <li key={ou} className="text-xs text-gray-300 font-mono break-all pl-2 border-l-2 border-cyan-500/30">
+                                                        {ou}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </li>
                             );
                         })}
