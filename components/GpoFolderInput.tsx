@@ -91,9 +91,9 @@ export const GpoFolderInput: React.FC<GpoFolderInputProps> = ({ onGenerate, isLo
        <div className="mb-6">
             <div className="flex justify-between items-start">
               <div>
-                <h2 className="nexus-text text-xl font-bold">Bulk GPO Import</h2>
+                <h2 className="nexus-text text-xl font-bold">Logical Policy Optimizer</h2>
                 <p className="text-gray-400 text-sm mt-1">
-                    Synchronize entire directories of exported reports to the intelligence engine.
+                    Group policies by settings and enforce User/Computer separation for better login efficiency.
                 </p>
               </div>
               <div className="flex bg-slate-950/60 p-1 rounded-lg border border-white/5">
@@ -148,10 +148,10 @@ export const GpoFolderInput: React.FC<GpoFolderInputProps> = ({ onGenerate, isLo
             <BulkIcon className="w-12 h-12 text-cyan-500/60 mb-4 group-hover:scale-110 transition-transform" />
           )}
           <span className="text-cyan-300 font-bold tracking-widest uppercase text-sm">
-            {isFolderMode ? 'Upload Entire GPO Folder' : 'Select Multiple GPO Reports'}
+            {isFolderMode ? 'Optimizer Folder Select' : 'Optimizer File Select'}
           </span>
           <span className="text-gray-500 text-xs mt-2">
-            {isFolderMode ? 'Will scan all XML/HTML files in chosen directory' : 'Supports CTRL+A or Shift-Click'}
+            {isFolderMode ? 'Select GPO directory for logical grouping' : 'Select multiple GPOs to optimize'}
           </span>
         </button>
 
@@ -166,7 +166,7 @@ export const GpoFolderInput: React.FC<GpoFolderInputProps> = ({ onGenerate, isLo
           <div className="bg-slate-950/50 p-4 rounded-xl border border-white/5 flex-grow max-h-60 overflow-hidden flex flex-col">
               <div className="flex justify-between items-center mb-3">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                    Queued: <span className="text-cyan-400">{files.length} GPOs</span>
+                    Optimization Queue: <span className="text-cyan-400">{files.length} GPOs</span>
                   </h3>
                    <div className={`text-[10px] font-mono ${isSizeExceeded ? 'text-red-400' : 'text-gray-500'}`}>
                       {sizeInMb} MB / {maxSizeInMb} MB
@@ -196,9 +196,9 @@ export const GpoFolderInput: React.FC<GpoFolderInputProps> = ({ onGenerate, isLo
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    INITIALIZING BANK OF {files.length} GPOs...
+                    INITIALIZING LOGICAL ANALYSIS...
                 </span>
-              ) : `LAUNCH FOREST-WIDE SCAN (${files.length} GPOs)`}
+              ) : `INITIATE LOGICAL OPTIMIZATION (${files.length} GPOs)`}
             </button>
         </form>
       </div>

@@ -50,8 +50,8 @@ export const GpoInputForm: React.FC<GpoInputFormProps> = ({ onGenerate, isLoadin
   return (
     <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-6 flex flex-col">
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-cyan-300">Provide GPO Reports</h2>
-        <p className="text-gray-400 text-sm">Paste content or drag & drop files.</p>
+        <h2 className="text-xl font-bold text-cyan-300">Audit & Analysis Hub</h2>
+        <p className="text-gray-400 text-sm">Paste content or drag & drop files for comparison.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         {inputs.map((input, index) => (
@@ -72,7 +72,7 @@ export const GpoInputForm: React.FC<GpoInputFormProps> = ({ onGenerate, isLoadin
             hasMatch ? 'bg-indigo-600 hover:bg-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.5)]' : 'bg-cyan-600 hover:bg-cyan-500'
           }`}
         >
-          {isLoading ? 'Processing...' : hasMatch ? '✨ Easy Peasy: Instant Load Match' : 'Run Analysis & Reports'}
+          {isLoading ? 'Processing...' : hasMatch ? '✨ Easy Peasy: Instant Load Match' : 'Run Audit Sequence'}
         </button>
       </form>
     </div>

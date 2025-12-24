@@ -83,11 +83,11 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
     e.preventDefault();
     const gpoContents = inputs.map(input => input.content).filter(content => content.trim() !== '');
     if (gpoContents.length < 2) {
-        alert("Please provide at least two GPO reports to consolidate.");
+        alert("Please provide at least two GPO reports to compare.");
         return;
     }
     if (!newGpoName.trim()) {
-        alert("Please provide a name for the new consolidated GPO.");
+        alert("Please provide a name for potential consolidation.");
         return;
     }
     onGenerate(gpoContents, newGpoName);
@@ -100,25 +100,24 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
   return (
     <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-6 h-full flex flex-col">
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-cyan-300">GPO Consolidation Builder</h2>
+        <h2 className="text-xl font-bold text-cyan-300">Merge Compatibility Checker</h2>
         <p className="text-gray-400 text-sm">
-          Provide two or more GPO reports below. The tool will merge them into a single new GPO, with settings from later reports overwriting earlier ones.
+          Compare GPOs against each other to research compatibility for potential merging. Settings from later reports overwrite earlier ones in the preview.
         </p>
       </div>
       <form onSubmit={handleSubmit} className="flex-grow flex flex-col space-y-4">
         <div className="space-y-6 flex-grow">
           {inputs.map((input, index) => (
             <div key={input.id} className="relative">
-              <label className="block text-sm font-medium text-gray-300 mb-2">GPO Report #{index + 1} (Order matters)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Research Candidate #{index + 1}</label>
               <textarea
                 value={input.content}
                 onChange={(e) => handleInputChange(input.id, e.target.value)}
                 onDragOver={handleDragOver}
                 onDragEnter={(e) => handleDragEnter(e, input.id)}
-                // Fix: Pass both the event and the input ID to the handler to satisfy the (e, id) signature
                 onDragLeave={(e) => handleDragLeave(e, input.id)}
                 onDrop={(e) => handleDrop(e, input.id)}
-                placeholder={`Paste GPO report #${index + 1} content here, or drag & drop a file...`}
+                placeholder={`Paste candidate #${index + 1} content here, or drag & drop a file...`}
                 className={`w-full p-3 bg-gray-900 border rounded-md text-gray-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200 text-sm font-mono ${
                     dragOverId === input.id ? 'border-cyan-500 ring-2 ring-cyan-500/50' : 'border-gray-600'
                 }`}
@@ -131,7 +130,7 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
                   type="button"
                   onClick={() => removeInput(input.id)}
                   className="absolute top-0 right-0 mt-1 mr-1 text-gray-500 hover:text-red-400 p-1 rounded-full focus:outline-none focus:ring-2 focus:ring-red-400"
-                  aria-label={`Remove report ${index + 1}`}
+                  aria-label={`Remove candidate ${index + 1}`}
                   disabled={isLoading}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -150,12 +149,12 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
               disabled={isLoading}
               className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 disabled:opacity-50 transition-colors"
             >
-              + Add Another GPO Report
+              + Add Another Candidate
             </button>
         </div>
         
         <div className="mt-6">
-            <label htmlFor="gpoName" className="block text-sm font-medium text-gray-300 mb-2">New Consolidated GPO Name</label>
+            <label htmlFor="gpoName" className="block text-sm font-medium text-gray-300 mb-2">Research Baseline Name</label>
             <input
                 type="text"
                 id="gpoName"
@@ -171,11 +170,6 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
             <div className={`text-sm font-mono ${isSizeExceeded ? 'text-red-400' : 'text-gray-400'}`}>
                 Total Size: {sizeInMb} MB / {maxSizeInMb} MB
             </div>
-            {isSizeExceeded && (
-                <p className="text-red-400 text-xs mt-1">
-                    Total size of reports exceeds the limit. Please remove or shorten some reports.
-                </p>
-            )}
         </div>
 
         <button
@@ -183,7 +177,7 @@ export const GpoConsolidatorForm: React.FC<GpoConsolidatorFormProps> = ({ onGene
           disabled={isLoading || isSizeExceeded}
           className="mt-2 w-full inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-cyan-600 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all duration-200"
         >
-          {isLoading ? 'Consolidating...' : 'Generate Consolidated GPO & Script'}
+          {isLoading ? 'Researching...' : 'Compare Compatibility & Research Merging'}
         </button>
       </form>
     </div>

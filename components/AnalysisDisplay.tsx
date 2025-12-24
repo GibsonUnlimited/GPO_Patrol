@@ -342,7 +342,7 @@ const ConsolidationCard: React.FC<ConsolidationCardProps> = ({ consolidation, on
                 </div>
             </div>
             <div>
-                <p className="text-sm text-gray-400 mb-1">Justification</p>
+                <p className="text-sm text-gray-400 mb-1">Efficiency Justification</p>
                 <p className="text-gray-300 text-sm">{consolidation.reason}</p>
             </div>
             
@@ -353,14 +353,14 @@ const ConsolidationCard: React.FC<ConsolidationCardProps> = ({ consolidation, on
                     className="flex-1 inline-flex justify-center items-center px-4 py-2 bg-gray-700 hover:bg-gray-600 text-sky-300 text-sm font-medium rounded-md transition-colors border border-gray-600"
                 >
                     <ScaleIcon className="w-4 h-4 mr-2" />
-                    Compare GPOs
+                    Compare Sources
                 </button>
                 <button
                     onClick={(e) => { e.stopPropagation(); onPlan(); }}
                     className="flex-1 inline-flex justify-center items-center px-4 py-2 bg-gray-700 hover:bg-gray-600 text-green-400 text-sm font-medium rounded-md transition-colors border border-gray-600"
                 >
                     <MergeIcon className="w-4 h-4 mr-2" />
-                    View Merge Plan
+                    Consolidation Plan
                 </button>
             </div>
         </div>
@@ -372,11 +372,11 @@ const ConsolidationCard: React.FC<ConsolidationCardProps> = ({ consolidation, on
                 <div className="px-4 py-3 bg-sky-900/40 text-sky-300 flex items-center justify-between cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
                     <div className="flex items-center">
                         <MergeIcon className="w-5 h-5 mr-3 flex-shrink-0" />
-                        <span className="font-bold">Optimization Opportunity</span>
+                        <span className="font-bold">Consolidation Readiness Detected</span>
                     </div>
                      <div className="flex items-center space-x-2">
                         <span className="text-xs text-gray-400 whitespace-nowrap">
-                            {consolidation.mergeCandidates.length} GPOs
+                            {consolidation.mergeCandidates.length} GPOs Matching
                         </span>
                         <ChevronDownIcon className={`w-6 h-6 text-gray-400 transition-transform duration-300 ${isExpanded ? 'transform rotate-180' : ''}`} />
                     </div>
@@ -405,21 +405,21 @@ const Dashboard: React.FC<{ stats: AnalysisStats, consolidation?: GpoConsolidati
 
     const statItems = [
         { 
-            label: "Total GPOs Analyzed", 
+            label: "Analyzed GPOs", 
             value: stats.totalGpos, 
             color: "text-cyan-300",
-            subtext: stats.totalGpos !== potentialTotal ? `Potential: ${potentialTotal}` : null,
+            subtext: stats.totalGpos !== potentialTotal ? `Target: ${potentialTotal}` : null,
             subtextColor: "text-green-400"
         },
-        { label: "Security Alerts", value: stats.securityAlerts || 0, color: "text-red-500 animate-pulse" },
-        { label: "High-Severity Conflicts", value: stats.highSeverityConflicts, color: "text-orange-400" },
-        { label: "Optimization Opportunities", value: stats.consolidationOpportunities, color: "text-sky-400" },
+        { label: "Consolidation Targets", value: stats.consolidationOpportunities, color: "text-sky-400 font-black animate-pulse" },
+        { label: "Redundant Overlaps", value: stats.overlaps, color: "text-yellow-400" },
+        { label: "Security Alerts", value: stats.securityAlerts || 0, color: "text-red-500" },
     ];
 
     return (
         <div className="mb-8 p-4 bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 animate-fade-in">
             <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center">
-                Performance & Hardening Status
+                Efficiency & Minimization Status
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 {statItems.map(item => (
@@ -429,7 +429,7 @@ const Dashboard: React.FC<{ stats: AnalysisStats, consolidation?: GpoConsolidati
                             {item.subtext && (
                                 <div className="flex flex-col items-center">
                                      <span className={`text-xs font-bold ${item.subtextColor} animate-pulse`}>
-                                        Potential: {item.subtext}
+                                        {item.subtext}
                                     </span>
                                 </div>
                             )}
@@ -479,8 +479,8 @@ export const AnalysisDisplay: React.FC<{ analysis: Analysis }> = ({ analysis }) 
     <div className="bg-black/20 backdrop-filter backdrop-blur-lg rounded-xl border border-white/10 shadow-2xl p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div className="flex items-center">
-            <InfoIcon className="w-7 h-7 text-cyan-300 mr-3"/>
-            <h2 className="text-2xl font-bold text-cyan-300">GPO Analysis Report</h2>
+            <MergeIcon className="w-7 h-7 text-cyan-300 mr-3"/>
+            <h2 className="text-2xl font-bold text-cyan-300">Efficiency & Consolidation Report</h2>
           </div>
           {/* Visual Map Trigger */}
           <button 
@@ -488,7 +488,7 @@ export const AnalysisDisplay: React.FC<{ analysis: Analysis }> = ({ analysis }) 
             className="inline-flex items-center px-4 py-2 border border-cyan-500/30 bg-cyan-900/20 hover:bg-cyan-900/40 text-cyan-300 rounded-md transition-colors text-sm font-medium"
           >
             <MapIcon className="w-4 h-4 mr-2" />
-            View Relationship Map
+            View Minimization Matrix
           </button>
       </div>
       
@@ -522,40 +522,20 @@ export const AnalysisDisplay: React.FC<{ analysis: Analysis }> = ({ analysis }) 
       />
 
       <div className="prose prose-invert prose-sm text-gray-300 max-w-none mb-8 p-4 bg-black/30 rounded-md border border-gray-700/50 animate-fade-in">
-        <p className="font-medium text-gray-200">Executive Summary</p>
+        <p className="font-medium text-gray-200">Executive Minimization Strategy</p>
         {analysis.summary ? (
              <p>{analysis.summary}</p>
         ) : (
-             <p className="text-gray-500 italic animate-pulse">Generating final summary based on incoming data...</p>
+             <p className="text-gray-500 italic animate-pulse">Calculating optimal forest density...</p>
         )}
       </div>
 
-      {/* --- SECURITY RECOMMENDATIONS SECTION --- */}
-      {hasSecurityRecs && (
-        <div className="mb-10 animate-fade-in">
-             <div className="flex items-center mb-4">
-                 <ShieldCheckIcon className="w-6 h-6 text-red-500 mr-2" />
-                 <h3 className="text-xl font-semibold text-gray-200">Recommended Settings for Security Posture</h3>
-             </div>
-             <p className="text-sm text-gray-400 mb-4 ml-1">
-                 These settings deviate from standard security baselines (e.g., CIS, MS Security Baseline). 
-                 Remediating these will harden your environment.
-             </p>
-             <div className="grid grid-cols-1 gap-4">
-                 {analysis.securityRecommendations!.map((rec, index) => (
-                    <div key={index} className={getGlowClass('Security', rec.severity)}>
-                         <SecurityRecommendationCard recommendation={rec} />
-                    </div>
-                 ))}
-             </div>
-        </div>
-      )}
-      
+      {/* --- CONSOLIDATION SECTION (MOVED TO TOP) --- */}
       {analysis.consolidation && analysis.consolidation.length > 0 && (
-        <div className="mb-8">
-             <h3 className="text-xl font-semibold text-gray-200 mb-4 ml-1">Optimization Opportunities</h3>
+        <div className="mb-10">
+             <h3 className="text-xl font-semibold text-gray-200 mb-4 ml-1">Consolidation Opportunities (Minimization Focus)</h3>
              <p className="text-sm text-gray-400 mb-4 ml-1">
-                 Opportunities to consolidate GPOs with identical linking and delegation to reduce processing overhead.
+                 Priority candidates for merging based on 100% matches in Linked OUs, Security Filtering, and Delegation.
              </p>
              <div className="relative mb-4">
                 <SearchIcon className="w-5 h-5 text-gray-500 absolute top-1/2 left-3 -translate-y-1/2" />
@@ -584,11 +564,31 @@ export const AnalysisDisplay: React.FC<{ analysis: Analysis }> = ({ analysis }) 
              </div>
         </div>
       )}
+
+      {/* --- SECURITY RECOMMENDATIONS SECTION --- */}
+      {hasSecurityRecs && (
+        <div className="mb-10 animate-fade-in">
+             <div className="flex items-center mb-4">
+                 <ShieldCheckIcon className="w-6 h-6 text-red-500 mr-2" />
+                 <h3 className="text-xl font-semibold text-gray-200">Recommended Security Hardening</h3>
+             </div>
+             <p className="text-sm text-gray-400 mb-4 ml-1">
+                 Remediating these configurations will harden your posture while potentially simplifying logic.
+             </p>
+             <div className="grid grid-cols-1 gap-4">
+                 {analysis.securityRecommendations!.map((rec, index) => (
+                    <div key={index} className={getGlowClass('Security', rec.severity)}>
+                         <SecurityRecommendationCard recommendation={rec} />
+                    </div>
+                 ))}
+             </div>
+        </div>
+      )}
       
       <div>
-        <h3 className="text-xl font-semibold text-gray-200 mb-2 ml-1">Detailed Findings (Conflicts & Overlaps)</h3>
+        <h3 className="text-xl font-semibold text-gray-200 mb-2 ml-1">Setting Forensics (Conflicts & Overlaps)</h3>
         <p className="text-sm text-gray-400 mb-4 ml-1">
-             <strong>Conflicts:</strong> Differing values for the same setting. <strong>Overlaps:</strong> Redundant definitions of the same value.
+             Detailed settings analysis. Resolving these helps prepare for future consolidation.
         </p>
         <div className="relative mb-4">
             <SearchIcon className="w-5 h-5 text-gray-500 absolute top-1/2 left-3 -translate-y-1/2" />

@@ -1,4 +1,10 @@
 
+export type PriorityItem = 'Consolidation' | 'Similar Like-Minded Settings' | 'Conflicts' | 'Overlap';
+
+export interface AnalysisPriority {
+  rank: PriorityItem[];
+}
+
 export interface GpoFinding {
   type: 'Conflict' | 'Overlap';
   setting: string;
@@ -59,6 +65,7 @@ export interface Analysis {
   consolidation?: GpoConsolidation[];
   securityRecommendations?: GpoSecurityRecommendation[];
   gpoDetails: GpoDetails[];
+  powershellScript?: string;
 }
 
 export interface AnalysisResponse {
@@ -110,11 +117,10 @@ export interface ConsolidationResult {
   mergeReport: MergeReport;
 }
 
-// --- NEW ORGANIZATION ANALYSIS TYPES ---
 export interface GpoClassification {
   gpoName: string;
   type: 'User' | 'Computer' | 'Mixed';
-  primaryCategory: string; // e.g. "Browser Config", "Server Hardening"
+  primaryCategory: string;
   reason: string;
 }
 
@@ -126,14 +132,13 @@ export interface OrganizationRecommendation {
   type: 'User' | 'Computer' | 'Mixed'; 
 }
 
-// Fixed missing properties used in OrganizationDisplay component (entropyScore and remediationScript)
 export interface OrganizationAnalysis {
   summary: string;
   entropyScore?: number;
   remediationScript?: string;
   classifications: GpoClassification[];
   recommendations: OrganizationRecommendation[];
-  gpoDetails: GpoDetails[];
+  gpoDetails?: GpoDetails[];
 }
 
 export interface LogEntry {
