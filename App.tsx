@@ -9,7 +9,7 @@ import { AnalysisDisplay } from './components/AnalysisDisplay';
 import { OrganizationDisplay } from './components/OrganizationDisplay';
 import { AnalysisProgress } from './components/AnalysisProgress';
 import { ScriptDisplay } from './components/ScriptDisplay';
-import { PrioritySelector } from './components/PrioritySelector';
+import { ForensicVault } from './components/ForensicVault';
 import { generateGpoScriptAndAnalysis, generateConsolidatedGpo, generateOrganizationAnalysis } from './services/geminiService';
 import { SettingsModal } from './components/SettingsModal';
 import type { Analysis, AnalysisResponse, ProgressState, LogEntry, OrganizationAnalysis, PriorityItem } from './types';
@@ -25,10 +25,12 @@ declare global {
   }
 }
 
-type InputMethod = 'workshop' | 'bulk';
+type InputMethod = 'workshop' | 'bulk' | 'archive';
 type LogicMode = 'analysis' | 'organization';
 type ViewMode = 'landing' | 'input' | 'consolidator';
-type AppState = 'idle' | 'processing' | 'displaying_analysis' | 'displaying_organization' | 'error' | 'pending_priorities';
+type AppState = 'idle' | 'processing' | 'displaying_analysis' | 'displaying_organization' | 'error';
+
+const DEFAULT_PRIORITIES: PriorityItem[] = ['Consolidation', 'Similar Like-Minded Settings', 'Conflicts', 'Overlap'];
 
 const App: React.FC = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('landing');
@@ -37,7 +39,7 @@ const App: React.FC = () => {
     const [logicMode, setLogicMode] = useState<LogicMode>('analysis');
     const [bulkSubTab, setBulkSubTab] = useState<'folder' | 'sync'>('folder');
     
-    const [pendingGpoData, setPendingGpoData] = useState<any>(null);
+    const [priorities, setPriorities] = useState<PriorityItem[]>(DEFAULT_PRIORITIES);
     const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
     const [organizationResult, setOrganizationResult] = useState<OrganizationAnalysis | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,41 @@ const App: React.FC = () => {
         };
         checkTier();
     }, []);
+
+    const saveToVault = useCallback((res: AnalysisResponse) => {
+        const vault = JSON.parse(localStorage.getItem('gpo_sentry_vault') || '[]');
+        const entry = {
+            id: `v_${Date.now()}`,
+            timestamp: Date.now(),
+            gpoCount: res.analysis.stats.totalGpos,
+            title: res.analysis.summary.slice(0, 50) + '...',
+            data: res
+        };
+        const updatedVault = [entry, ...vault].slice(0, 10);
+        localStorage.setItem('gpo_sentry_vault', JSON.stringify(updatedVault));
+    }, []);
+
+    const handleRestoreVaultEntry = (data: AnalysisResponse) => {
+        setAnalysisResult(data);
+        setViewMode('input');
+        setAppState('displaying_analysis');
+    };
+
+    const handleArchiveUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const archive = JSON.parse(text);
+            if (archive.analysis) {
+                handleRestoreVaultEntry(archive);
+            } else {
+                throw new Error("Invalid Archive Format");
+            }
+        } catch (err) {
+            alert("Failed to load forensic archive. Ensure it is a valid .gposentry file.");
+        }
+    };
 
     const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
         const entry: LogEntry = { timestamp: new Date().toLocaleTimeString(), message, type };
@@ -86,7 +123,7 @@ const App: React.FC = () => {
         setLogs([]);
     };
 
-    const executeAnalyzer = async (gpoData: any, priorities: PriorityItem[]) => {
+    const executeAnalyzer = async (gpoData: any) => {
         setAppState('processing');
         setError(null);
         setLogs([]);
@@ -96,6 +133,7 @@ const App: React.FC = () => {
                 addLog(`Analyzed segment. Total found: ${p.consolidation?.length || 0} consolidation targets.`, "success");
             });
             setAnalysisResult(result);
+            saveToVault(result);
             setAppState('displaying_analysis');
         } catch (err: any) {
             setError(err.message);
@@ -104,7 +142,7 @@ const App: React.FC = () => {
         }
     };
 
-    const executeOrganizer = async (contents: string[], priorities: PriorityItem[]) => {
+    const executeOrganizer = async (contents: string[]) => {
         setAppState('processing');
         setError(null);
         setLogs([]);
@@ -122,32 +160,18 @@ const App: React.FC = () => {
     };
 
     const handleGpoDataReady = useCallback((gpoData: any) => {
-        setPendingGpoData(gpoData);
-        setAppState('pending_priorities');
-    }, []);
-
-    const handleConfirmPriorities = useCallback(async (priorities: PriorityItem[]) => {
-        if (!pendingGpoData) return;
-        const contents = pendingGpoData.baseGpo ? [...pendingGpoData.comparisonGpos, pendingGpoData.baseGpo] : pendingGpoData.comparisonGpos;
+        const contents = gpoData.baseGpo ? [...gpoData.comparisonGpos, gpoData.baseGpo] : gpoData.comparisonGpos;
         if (logicMode === 'organization') {
-            executeOrganizer(contents, priorities);
+            executeOrganizer(contents);
         } else {
-            executeAnalyzer(pendingGpoData, priorities);
+            executeAnalyzer(gpoData);
         }
-    }, [logicMode, pendingGpoData]);
+    }, [logicMode, priorities, executeAnalyzer, executeOrganizer]);
 
     return (
         <div className="min-h-screen flex flex-col font-sans text-slate-100 selection:bg-cyan-500/30">
             <Header isProTier={isProTier} onOpenSettings={() => setIsSettingsModalOpen(true)} />
             
-            {appState === 'pending_priorities' && (
-                <PrioritySelector 
-                  onConfirm={handleConfirmPriorities} 
-                  onCancel={() => setAppState('idle')} 
-                  isLoading={false}
-                />
-            )}
-
             {appState === 'error' && (
                 <div className="bg-red-950/40 border-y border-red-500/30 py-4 px-6 flex flex-col items-center animate-fade-in">
                     <div className="flex items-center justify-between w-full max-w-6xl">
@@ -168,21 +192,20 @@ const App: React.FC = () => {
                             <p className="text-xl text-gray-400 font-light max-w-2xl mx-auto leading-relaxed">
                                 Forensic GPO management for optimized forest performance and security.
                             </p>
+                            <div className="mt-8 flex justify-center space-x-4">
+                                <label className="cursor-pointer px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                                    Restore Archive (.gposentry)
+                                    <input type="file" accept=".gposentry,.json" className="hidden" onChange={handleArchiveUpload} />
+                                </label>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
                             <button onClick={() => { setInputMethod('workshop'); setLogicMode('analysis'); setViewMode('input'); }} className="group p-10 hologram-card rounded-3xl text-left border border-white/5 hover:border-cyan-500/40 transition-all">
                                 <div className="w-12 h-12 bg-cyan-500/10 rounded-2xl flex items-center justify-center mb-6 border border-cyan-500/20 group-hover:scale-110 transition-transform">
                                    <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                                 </div>
                                 <h2 className="text-xl font-bold mb-4 group-hover:text-cyan-300 transition-colors">Efficiency Analysis Hub</h2>
                                 <p className="text-gray-400 text-sm leading-relaxed">Prioritize consolidation to minimize total GPO count. Identifies 100% matches in Linked OUs, Security Filtering, and Delegation.</p>
-                            </button>
-                            <button onClick={() => { setInputMethod('bulk'); setLogicMode('organization'); setViewMode('input'); }} className="group p-10 hologram-card rounded-3xl text-left border border-indigo-500/20 hover:border-indigo-500/60 transition-all bg-indigo-500/5">
-                                <div className="w-12 h-12 bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-6 border border-indigo-500/40 group-hover:scale-110 transition-transform">
-                                   <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                </div>
-                                <h2 className="text-xl font-bold mb-4 group-hover:text-indigo-300 transition-colors">Logical Policy Optimizer</h2>
-                                <p className="text-gray-400 text-sm leading-relaxed">Organize settings into like-minded groups. Enforce User/Computer separation to minimize GPO count and accelerate sign-on times.</p>
                             </button>
                             <button onClick={() => setViewMode('consolidator')} className="group p-10 hologram-card rounded-3xl text-left border border-white/5 hover:border-orange-500/40 transition-all">
                                 <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center mb-6 border border-orange-500/20 group-hover:scale-110 transition-transform">
@@ -192,6 +215,8 @@ const App: React.FC = () => {
                                 <p className="text-gray-400 text-sm leading-relaxed">Perform deep-dive research into GPO compatibility for safe merging of redundant or fragmented policies.</p>
                             </button>
                         </div>
+
+                        <ForensicVault onRestore={handleRestoreVaultEntry} />
                     </div>
                 )}
 
@@ -266,9 +291,16 @@ const App: React.FC = () => {
                 )}
             </main>
             <footer className="p-10 text-center text-gray-600 text-[10px] font-mono tracking-[0.4em] uppercase border-t border-white/5 bg-slate-950/40">
-                GPO SENTRY &bull; Forensic Forest Intelligence &bull; v4.2.0-PRO
+                GPO SENTRY &bull; Created by Damien Gibson &bull; Forensic Forest Intelligence &bull; v4.2.0-PRO
             </footer>
-            <SettingsModal isOpen={isSettingsModalOpen} isProTier={isProTier} onUpgradeTier={handleUpgradeTier} onClose={() => setIsSettingsModalOpen(false)} />
+            <SettingsModal 
+                isOpen={isSettingsModalOpen} 
+                isProTier={isProTier} 
+                onUpgradeTier={handleUpgradeTier} 
+                onClose={() => setIsSettingsModalOpen(false)} 
+                priorities={priorities}
+                onUpdatePriorities={setPriorities}
+            />
         </div>
     );
 };

@@ -5,6 +5,15 @@ export interface AnalysisPriority {
   rank: PriorityItem[];
 }
 
+export interface GpoDocumentation {
+  rationale: string;
+  painPoint: string;
+  impact: string;
+  technicalBrief: string;
+  suggestedName?: string;
+  classification?: string;
+}
+
 export interface GpoFinding {
   type: 'Conflict' | 'Overlap';
   setting: string;
@@ -12,6 +21,7 @@ export interface GpoFinding {
   severity?: 'High' | 'Medium';
   resolutionScript?: string;
   manualSteps?: string;
+  documentation?: GpoDocumentation;
   policies: Array<{
     name: string;
     value: string;
@@ -25,6 +35,7 @@ export interface GpoConsolidation {
   mergeCandidates: string[];
   reason: string;
   manualSteps?: string;
+  documentation?: GpoDocumentation;
 }
 
 export interface GpoSecurityRecommendation {
@@ -122,6 +133,7 @@ export interface GpoClassification {
   type: 'User' | 'Computer' | 'Mixed';
   primaryCategory: string;
   reason: string;
+  documentation?: GpoDocumentation;
 }
 
 export interface OrganizationRecommendation {

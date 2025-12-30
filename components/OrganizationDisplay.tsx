@@ -1,17 +1,12 @@
 
 import React, { useState } from 'react';
-import type { OrganizationAnalysis, GpoDetails, GpoClassification } from '../types';
+import type { OrganizationAnalysis, GpoDetails, GpoClassification, GpoDocumentation } from '../types';
 
 interface OrganizationDisplayProps {
   result: OrganizationAnalysis;
 }
 
 // --- ICONS ---
-const ServerIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-  </svg>
-);
 const UserIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -38,13 +33,47 @@ const BoltIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
   </svg>
 );
+const DocIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+);
+
+const DocumentationPanel: React.FC<{ doc: GpoDocumentation }> = ({ doc }) => {
+    return (
+        <div className="mt-4 p-5 bg-slate-950/80 border border-red-500/20 rounded-2xl animate-fade-in shadow-2xl">
+            <h4 className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-4 flex items-center">
+                <DocIcon className="w-3 h-3 mr-2" /> Forensic Remediation Brief
+            </h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase block mb-1">Pain Point</span>
+                    <p className="text-[11px] text-red-200/80 leading-relaxed italic">"{doc.painPoint}"</p>
+                </div>
+                <div>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase block mb-1">Strategic Impact</span>
+                    <p className="text-[11px] text-green-400/80 leading-relaxed">{doc.impact}</p>
+                </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-white/5">
+                <span className="text-[9px] font-bold text-gray-500 uppercase block mb-1">Technical Summary for Docs</span>
+                <p className="text-[11px] text-gray-400 leading-relaxed font-mono">{doc.technicalBrief}</p>
+            </div>
+        </div>
+    );
+};
 
 const MixedPolicyRow: React.FC<{ 
     gpoName: string; 
     primaryCategory: string; 
     details: GpoDetails | undefined; 
-}> = ({ gpoName, primaryCategory, details }) => {
+    documentation?: GpoDocumentation;
+}> = ({ gpoName, primaryCategory, details, documentation }) => {
     const [expanded, setExpanded] = useState(false);
+    const [showDoc, setShowDoc] = useState(false);
+    
     const userSettings = details?.configuredSettings?.filter(s => s.policyType === 'User') || [];
     const compSettings = details?.configuredSettings?.filter(s => s.policyType === 'Computer') || [];
 
@@ -60,7 +89,7 @@ const MixedPolicyRow: React.FC<{
                         <span className="text-[10px] uppercase font-black tracking-widest text-red-500/60">Mixed State Conflict</span>
                     </div>
                 </div>
-                <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-4">
                     <div className="hidden sm:flex space-x-2">
                         <span className="px-2 py-1 rounded bg-blue-900/30 text-blue-300 text-[10px] font-bold">{userSettings.length} USER</span>
                         <span className="px-2 py-1 rounded bg-purple-900/30 text-purple-300 text-[10px] font-bold">{compSettings.length} COMP</span>
@@ -73,6 +102,17 @@ const MixedPolicyRow: React.FC<{
 
             {expanded && (
                 <div className="p-6 pt-0 border-t border-red-500/20 animate-fade-in">
+                    <div className="flex justify-end mt-4">
+                        <button 
+                            onClick={() => setShowDoc(!showDoc)}
+                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${showDoc ? 'bg-red-600 border-red-500 text-white' : 'bg-slate-800 border-white/10 text-gray-500 hover:text-red-400'}`}
+                        >
+                            {showDoc ? 'Close Forensic Brief' : 'Generate Project Doc Brief'}
+                        </button>
+                    </div>
+
+                    {showDoc && documentation && <DocumentationPanel doc={documentation} />}
+
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                         <div className="space-y-4">
                             <div className="flex items-center text-blue-400 text-xs font-bold uppercase tracking-widest bg-blue-500/5 p-3 rounded-lg border border-blue-500/10">
@@ -100,16 +140,6 @@ const MixedPolicyRow: React.FC<{
                                 ))}
                             </div>
                         </div>
-                    </div>
-                    <div className="mt-6 flex flex-wrap gap-3">
-                         <div className="bg-slate-950 p-4 rounded-xl border border-white/5 flex-grow">
-                             <h5 className="text-[10px] font-black text-gray-500 uppercase mb-2">Split Remediation Plan</h5>
-                             <ol className="text-xs text-gray-400 space-y-2 list-decimal list-inside">
-                                 <li>Create <span className="text-white font-mono">{gpoName}_User</span> and link it to current OUs.</li>
-                                 <li>Disable "User Configuration" in the original GPO and rename to <span className="text-white font-mono">{gpoName}_Comp</span>.</li>
-                                 <li>Export and import relevant registry keys to match the above payload split.</li>
-                             </ol>
-                         </div>
                     </div>
                 </div>
             )}
@@ -264,6 +294,7 @@ export const OrganizationDisplay: React.FC<OrganizationDisplayProps> = ({ result
                             gpoName={gpo.gpoName} 
                             primaryCategory={gpo.primaryCategory} 
                             details={(result?.gpoDetails || []).find(d => d.name === gpo.gpoName)} 
+                            documentation={gpo.documentation}
                           />
                       ))
                   ) : (

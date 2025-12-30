@@ -34,6 +34,19 @@ const stripGpoContent = (content: string): string => {
     return content.substring(0, 7000);
 };
 
+const docSchema = {
+    type: Type.OBJECT,
+    properties: {
+        rationale: { type: Type.STRING },
+        painPoint: { type: Type.STRING },
+        impact: { type: Type.STRING },
+        technicalBrief: { type: Type.STRING },
+        suggestedName: { type: Type.STRING },
+        classification: { type: Type.STRING }
+    },
+    required: ["rationale", "painPoint", "impact", "technicalBrief"]
+};
+
 const analysisSchema = {
     type: Type.OBJECT,
     properties: {
@@ -64,6 +77,7 @@ const analysisSchema = {
                             severity: { type: Type.STRING },
                             resolutionScript: { type: Type.STRING },
                             manualSteps: { type: Type.STRING },
+                            documentation: docSchema,
                             policies: {
                                 type: Type.ARRAY,
                                 items: {
@@ -78,7 +92,7 @@ const analysisSchema = {
                                 }
                             }
                         },
-                        required: ["type", "setting", "recommendation", "policies"],
+                        required: ["type", "setting", "recommendation", "policies", "documentation"],
                     }
                 },
                 consolidation: {
@@ -90,8 +104,9 @@ const analysisSchema = {
                             mergeCandidates: { type: Type.ARRAY, items: { type: Type.STRING } },
                             reason: { type: Type.STRING },
                             manualSteps: { type: Type.STRING },
+                            documentation: docSchema
                         },
-                        required: ["recommendation", "mergeCandidates", "reason"],
+                        required: ["recommendation", "mergeCandidates", "reason", "documentation"],
                     }
                 },
                 securityRecommendations: {
@@ -118,7 +133,18 @@ const analysisSchema = {
                             name: { type: Type.STRING },
                             linkedOUs: { type: Type.ARRAY, items: { type: Type.STRING } },
                             securityFiltering: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            delegation: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            delegation: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            configuredSettings: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        name: { type: Type.STRING },
+                                        value: { type: Type.STRING },
+                                        policyType: { type: Type.STRING }
+                                    }
+                                }
+                            }
                         },
                         required: ["name", "linkedOUs"]
                     }
@@ -148,9 +174,10 @@ const orgSchema = {
                             gpoName: { type: Type.STRING },
                             type: { type: Type.STRING, enum: ["User", "Computer", "Mixed"] },
                             primaryCategory: { type: Type.STRING },
-                            reason: { type: Type.STRING }
+                            reason: { type: Type.STRING },
+                            documentation: docSchema
                         },
-                        required: ["gpoName", "type", "primaryCategory"]
+                        required: ["gpoName", "type", "primaryCategory", "documentation"]
                     }
                 },
                 recommendations: {
@@ -186,7 +213,7 @@ const performCall = async (prompt: string, schema: any, configOverrides: any = {
                 responseMimeType: "application/json", 
                 responseSchema: schema,
                 maxOutputTokens: 8192,
-                thinkingConfig: { thinkingBudget: 2048 },
+                thinkingConfig: { thinkingBudget: 4096 },
                 ...configOverrides 
             },
         });
@@ -251,13 +278,14 @@ export const generateGpoScriptAndAnalysis = async (
         MISSION: Optimize GPO count and identify baseline deviations.
         USER ANALYSIS PRIORITIES (Ordered by Weight): ${priorityStrings}.
         
-        Regardless of priority, ALWAYS maintain Enterprise Security and Performance as the underlying foundation.
+        CRITICAL INSTRUCTION: For every finding (Conflict, Overlap, Consolidation), you MUST generate a "documentation" block with:
+        - rationale: Technical justification.
+        - painPoint: Specific performance or security risk identified.
+        - impact: Positive result of resolution.
+        - technicalBrief: A professional summary for project documentation.
+        - suggestedName & classification: Only for consolidation/migration items.
         
-        1. IF Consolidation is priority: Look for 100% matches in Links/Filtering.
-        2. IF Conflicts/Overlap is priority: Deep dive into precedence and overwritten settings.
-        3. IF Similar Like-Minded Settings is priority: Focus on functional grouping and structural logic.
-        
-        GENERATE a robust PowerShell script that scans ALL domains in the forest, identifies GPOs, and exports reports.`;
+        Ensure documentation is professional, technical, and ready for an executive report.`;
 
         const batch = data.comparisonGpos.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
         const prompt = `Batch ${i + 1}/${totalBatches}. ${isOneToAll ? '1-to-All Comparison vs Baseline.' : 'Cluster Audit.'}
@@ -313,7 +341,8 @@ export const generateOrganizationAnalysis = async (gpoContents: string[], priori
     
     const systemInstruction = `You are an AD Forest Architect. Map forest functional logic.
     USER PRIORITIES: ${priorityStrings}. 
-    Focus on minimizing GPO count and strict User/Computer separation.`;
+    Focus on minimizing GPO count and strict User/Computer separation.
+    For every classification (especially MIXED types), generate professional documentation including painPoint, impact, and technicalBrief.`;
 
     const prompt = `Perform structural optimization. DATA:\n${gpoContents.map((c, i) => `GPO ${i+1}:\n${stripGpoContent(c)}`).join('\n')}`;
     const result = await callApi(prompt, orgSchema, { systemInstruction });

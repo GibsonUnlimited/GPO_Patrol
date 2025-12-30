@@ -1,11 +1,14 @@
 
 import React from 'react';
+import type { PriorityItem } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
   isProTier: boolean;
   onUpgradeTier: () => void;
   onClose: () => void;
+  priorities: PriorityItem[];
+  onUpdatePriorities: (newPriorities: PriorityItem[]) => void;
 }
 
 const TrashIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -26,7 +29,13 @@ const ShieldExclamationIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) =
   </svg>
 );
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, isProTier, onUpgradeTier, onClose }) => {
+const AdjustmentsIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 13.5V3.75m0 9.75a1.5 1.5 0 010 3m0-3a1.5 1.5 0 000 3m0 3.75V16.5m12-3V3.75m0 9.75a1.5 1.5 0 010 3m0-3a1.5 1.5 0 000 3m0 3.75V16.5m-6-9V3.75m0 3.75a1.5 1.5 0 010 3m0-3a1.5 1.5 0 000 3m0 9.75V10.5" />
+  </svg>
+);
+
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, isProTier, onUpgradeTier, onClose, priorities, onUpdatePriorities }) => {
   const handleFactoryReset = () => {
     if (confirm("Are you sure? This will delete all saved sessions and application data from this browser.")) {
         localStorage.clear();
@@ -34,12 +43,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, isProTier,
     }
   };
 
+  const movePriority = (index: number, direction: 'up' | 'down') => {
+    const newPriorities = [...priorities];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= priorities.length) return;
+    
+    [newPriorities[index], newPriorities[targetIndex]] = [newPriorities[targetIndex], newPriorities[index]];
+    onUpdatePriorities(newPriorities);
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-fade-in" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-gray-700 flex justify-between items-center bg-gray-900/50">
             <h2 className="text-xl font-bold text-gray-100 flex items-center">
                 <ShieldExclamationIcon className="w-6 h-6 mr-2 text-cyan-400" />
                 Control Center
@@ -47,7 +65,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, isProTier,
              <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">✕</button>
         </div>
         
-        <div className="p-6 space-y-8">
+        <div className="p-6 space-y-8 overflow-y-auto custom-scrollbar flex-grow bg-black/20">
             {/* Performance Tier */}
             <div>
                 <h3 className="text-sm font-bold text-gray-300 mb-3 flex items-center">
@@ -75,40 +93,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, isProTier,
                             {isProTier ? 'Change Key' : 'Upgrade to Pro'}
                         </button>
                     </div>
-                    {!isProTier && (
-                        <div className="text-[10px] text-gray-500 italic mt-2">
-                            To use a paid plan, you must select an API key from a project with billing enabled. 
-                            See <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-400 underline">Gemini API Billing Docs</a>.
-                        </div>
-                    )}
                 </div>
             </div>
 
             <hr className="border-gray-800" />
 
-            {/* Privacy Disclaimer */}
+            {/* Analysis Priorities Section */}
             <div>
-                <h3 className="text-sm font-bold text-gray-300 mb-2">Privacy & Data Handling</h3>
-                <div className="bg-gray-800/50 p-4 rounded-md border border-gray-700/50 text-sm text-gray-400 space-y-2">
-                    <p><strong className="text-gray-200">1. Data Processing:</strong> This application sends GPO data directly to Google's Gemini API.</p>
-                    <p><strong className="text-gray-200">2. Local Storage:</strong> Results are stored locally in your browser cache.</p>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-gray-300 flex items-center">
+                        <AdjustmentsIcon className="w-4 h-4 mr-2 text-cyan-400" />
+                        Intelligence Priorities
+                    </h3>
+                    <span className="text-[10px] text-gray-500 font-mono uppercase">Drag/Shift Rank</span>
+                </div>
+                <div className="space-y-2 bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                    {priorities.map((item, index) => (
+                        <div key={item} className="flex items-center group">
+                            <span className="w-6 text-[10px] font-mono text-gray-500">{index + 1}</span>
+                            <div className={`flex-grow flex items-center justify-between p-3 rounded-lg border transition-all ${index === 0 ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-white/5 border-white/5 group-hover:bg-white/10'}`}>
+                                <span className={`text-xs font-bold ${index === 0 ? 'text-cyan-300' : 'text-gray-300'}`}>{item}</span>
+                                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                        onClick={() => movePriority(index, 'up')}
+                                        disabled={index === 0}
+                                        className="p-1 hover:bg-white/10 rounded disabled:opacity-0 transition-all text-gray-400"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                    </button>
+                                    <button 
+                                        onClick={() => movePriority(index, 'down')}
+                                        disabled={index === priorities.length - 1}
+                                        className="p-1 hover:bg-white/10 rounded disabled:opacity-0 transition-all text-gray-400"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    <p className="text-[10px] text-gray-600 mt-4 leading-relaxed">
+                        The intelligence engine uses this sequence to weight findings. The top vector receives primary forensic focus.
+                    </p>
                 </div>
             </div>
+
+            <hr className="border-gray-800" />
 
             {/* Danger Zone */}
             <div>
                 <h3 className="text-sm font-bold text-red-400 mb-2">Danger Zone</h3>
-                <div className="flex items-center justify-between bg-red-900/10 border border-red-900/30 p-4 rounded-md">
+                <div className="flex items-center justify-between bg-red-900/10 border border-red-900/30 p-4 rounded-xl">
                     <div>
                         <p className="text-sm text-gray-300 font-medium">Factory Reset</p>
                         <p className="text-xs text-gray-500">Clears all sessions and logs.</p>
                     </div>
-                    <button onClick={handleFactoryReset} className="flex items-center px-3 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 rounded-md transition-colors text-sm">
+                    <button onClick={handleFactoryReset} className="flex items-center px-3 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 rounded-md transition-colors text-sm font-bold">
                         <TrashIcon className="w-4 h-4 mr-2" />
-                        Reset App
+                        Reset
                     </button>
                 </div>
             </div>
+        </div>
+
+        <div className="p-4 border-t border-gray-700 bg-gray-950/80 text-right">
+             <button onClick={onClose} className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs uppercase tracking-widest rounded-lg transition-all shadow-lg shadow-cyan-900/20">
+                Update Core Config
+            </button>
         </div>
       </div>
     </div>
