@@ -1,10 +1,4 @@
 
-export type PriorityItem = 'Consolidation' | 'Similar Like-Minded Settings' | 'Conflicts' | 'Overlap';
-
-export interface AnalysisPriority {
-  rank: PriorityItem[];
-}
-
 export interface GpoDocumentation {
   rationale: string;
   painPoint: string;
@@ -30,12 +24,34 @@ export interface GpoFinding {
   }>;
 }
 
+export interface IntuneMigrationInfo {
+  isCompatible: boolean;
+  confidence: number; // 0-100
+  targetProfileType: string; // e.g., "Settings Catalog", "Administrative Template"
+  notes: string;
+}
+
+export interface RoadmapAction {
+  actionType: 'Merge/Consolidate' | 'Migrate' | 'Evaluate' | 'Retire';
+  primaryGpo: string;
+  secondaryGpos?: string[];
+  targetName?: string;
+  details: string;
+}
+
+export interface RoadmapPhases {
+  phase1: RoadmapAction[]; // Consolidation & Shrinkage
+  phase2: RoadmapAction[]; // Structural Integrity & Precedence
+  phase3: RoadmapAction[]; // Intune Cloud Readiness
+}
+
 export interface GpoConsolidation {
   recommendation: string;
   mergeCandidates: string[];
   reason: string;
   manualSteps?: string;
   documentation?: GpoDocumentation;
+  intuneMigration?: IntuneMigrationInfo;
 }
 
 export interface GpoSecurityRecommendation {
@@ -53,6 +69,8 @@ export interface GpoDetails {
   linkedOUs: string[];
   securityFiltering?: string[];
   delegation?: string[];
+  intuneReady?: boolean;
+  performanceImpact?: 'High' | 'Medium' | 'Low';
   configuredSettings?: Array<{
       name: string;
       value: string;
@@ -67,21 +85,31 @@ export interface AnalysisStats {
     overlaps: number;
     consolidationOpportunities: number;
     securityAlerts: number;
+    intuneReadyCount: number;
 }
 
 export interface Analysis {
   summary: string;
+  roadmap: RoadmapPhases;
   stats: AnalysisStats;
   findings: GpoFinding[];
   consolidation?: GpoConsolidation[];
   securityRecommendations?: GpoSecurityRecommendation[];
   gpoDetails: GpoDetails[];
-  powershellScript?: string;
 }
 
 export interface AnalysisResponse {
   analysis: Analysis;
   script: string;
+}
+
+export interface VaultEntry {
+    id: string;
+    timestamp: string;
+    title: string;
+    fingerprint: string;
+    gpoCount: number;
+    data: AnalysisResponse;
 }
 
 export interface ProgressState {
@@ -128,33 +156,33 @@ export interface ConsolidationResult {
   mergeReport: MergeReport;
 }
 
-export interface GpoClassification {
-  gpoName: string;
-  type: 'User' | 'Computer' | 'Mixed';
-  primaryCategory: string;
-  reason: string;
-  documentation?: GpoDocumentation;
-}
-
-export interface OrganizationRecommendation {
-  groupName: string;
-  description: string;
-  suggestedGpos: string[];
-  reason: string;
-  type: 'User' | 'Computer' | 'Mixed'; 
-}
-
-export interface OrganizationAnalysis {
-  summary: string;
-  entropyScore?: number;
-  remediationScript?: string;
-  classifications: GpoClassification[];
-  recommendations: OrganizationRecommendation[];
-  gpoDetails?: GpoDetails[];
-}
-
 export interface LogEntry {
   timestamp: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error' | 'detail';
+}
+
+export interface PerformanceConfig {
+    highMemoryMode: boolean;
+}
+
+export interface GpoClassification {
+  gpoName: string;
+  type: 'User' | 'Computer' | 'Mixed';
+  primaryCategory: string;
+}
+
+export interface GpoRecommendation {
+  groupName: string;
+  type: string;
+  description: string;
+  reason: string;
+  suggestedGpos: string[];
+}
+
+export interface OrganizationAnalysis {
+  summary: string;
+  classifications: GpoClassification[];
+  recommendations: GpoRecommendation[];
+  gpoDetails: GpoDetails[];
 }

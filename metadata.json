@@ -1,5 +1,5 @@
 {
-  "name": "GPO Patrol",
-  "description": "An intelligent tool that analyzes Group Policy Object (GPO) data to identify conflicts, overlap and consolidation opportunity's, and generates a PowerShell script to automate this scanning process in your environment.",
+  "name": "Carlisle Policy Control",
+  "description": "An intelligent tool authored by Damien Gibson that analyzes Group Policy Object (GPO) data to identify conflicts, overlap and consolidation opportunities, and generates forensic audit reports for enterprise environments.",
   "requestFramePermissions": []
 }

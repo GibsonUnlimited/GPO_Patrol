@@ -1,50 +1,56 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import type { AnalysisResponse, Analysis, ProgressState, ConsolidationResult, OrganizationAnalysis, PriorityItem } from '../types';
+import type { AnalysisResponse, Analysis, ProgressState, ConsolidationResult, LogEntry, PerformanceConfig } from '../types';
 
-/**
- * STRATEGY FOR QUOTA MANAGEMENT & ERROR RESILIENCE
- */
-let apiRequestQueue = Promise.resolve();
-let lastRequestEndTime = 0;
-const FREE_TIER_GAP_MS = 65000; 
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY = 10000; 
-const BATCH_SIZE = 5; 
+const wait = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const callApiWithRetry = async (prompt: string, schema: any, retries = 5): Promise<any> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const stripGpoContent = (content: string): string => {
-    if (!content) return '';
-    if (content.includes('<html') || content.includes('<BODY')) {
-        const bodyMatch = content.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-        let text = bodyMatch ? bodyMatch[1] : content;
-        text = text.replace(/<script[^>]*>([\s\S]*)<\/script>/gi, '');
-        text = text.replace(/<style[^>]*>([\s\S]*)<\/style>/gi, '');
-        text = text.replace(/Explain\s+ID:[\s\S]*?(?=\s|$)/gi, '');
-        text = text.replace(/ADMX\s+file:[\s\S]*?(?=\s|$)/gi, '');
-        text = text.replace(/<[^>]+>/g, ' ');
-        return text.replace(/\s+/g, ' ').trim().substring(0, 7000);
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await ai.models.generateContent({
+                model: "gemini-3-pro-preview",
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: schema,
+                    temperature: 0.1,
+                    systemInstruction: `You are an Enterprise GPO Architect. Your mission is a 3-Phase Domain Modernization:
+                    PHASE 1: CONSOLIDATION & SHRINKAGE. Drastically reduce GPO count. Group policies by technology/purpose.
+                    PHASE 2: STRUCTURAL CLEANUP. Eliminate every single conflict and overlap.
+                    PHASE 3: INTUNE MODERNIZATION. Optimize the clean baseline for Intune migration.
+                    Action types must be: 'Merge/Consolidate', 'Migrate', 'Evaluate', or 'Retire'.`
+                },
+            });
+
+            const text = response.text;
+            if (!text) throw new Error("Empty response");
+            return JSON.parse(text.trim());
+        } catch (error: any) {
+            const errorStr = JSON.stringify(error).toLowerCase();
+            const isRetryable = errorStr.includes('429') || errorStr.includes('500') || errorStr.includes('quota') || errorStr.includes('rate limit');
+            
+            if (isRetryable && i < retries - 1) {
+                const backoff = Math.pow(2, i) * 5000 + (Math.random() * 1000);
+                await wait(backoff);
+                continue;
+            }
+            throw error;
+        }
     }
-    if (content.includes('<?xml')) {
-        let xml = content.replace(/xmlns(:\w+)?="[^"]*"/g, '').replace(/xsi(:\w+)?="[^"]*"/g, '');
-        xml = xml.replace(/[0-9a-fA-F]{64,}/g, '[DATA_BLOB]');
-        return xml.replace(/\s+/g, ' ').trim().substring(0, 7000);
-    }
-    return content.substring(0, 7000);
 };
 
-const docSchema = {
+const roadmapActionSchema = {
     type: Type.OBJECT,
     properties: {
-        rationale: { type: Type.STRING },
-        painPoint: { type: Type.STRING },
-        impact: { type: Type.STRING },
-        technicalBrief: { type: Type.STRING },
-        suggestedName: { type: Type.STRING },
-        classification: { type: Type.STRING }
+        actionType: { type: Type.STRING, enum: ['Merge/Consolidate', 'Migrate', 'Evaluate', 'Retire'] },
+        primaryGpo: { type: Type.STRING, description: "Primary GPO or Master Target Name" },
+        secondaryGpos: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Involved Source GPOs" },
+        targetName: { type: Type.STRING, description: "Proposed consolidated name for Phase 1" },
+        details: { type: Type.STRING, description: "Functional rationale" }
     },
-    required: ["rationale", "painPoint", "impact", "technicalBrief"]
+    required: ["actionType", "primaryGpo", "details"]
 };
 
 const analysisSchema = {
@@ -54,6 +60,15 @@ const analysisSchema = {
             type: Type.OBJECT,
             properties: {
                 summary: { type: Type.STRING },
+                roadmap: {
+                    type: Type.OBJECT,
+                    properties: {
+                        phase1: { type: Type.ARRAY, items: roadmapActionSchema },
+                        phase2: { type: Type.ARRAY, items: roadmapActionSchema },
+                        phase3: { type: Type.ARRAY, items: roadmapActionSchema }
+                    },
+                    required: ["phase1", "phase2", "phase3"]
+                },
                 stats: {
                     type: Type.OBJECT,
                     properties: {
@@ -63,8 +78,9 @@ const analysisSchema = {
                         overlaps: { type: Type.INTEGER },
                         consolidationOpportunities: { type: Type.INTEGER },
                         securityAlerts: { type: Type.INTEGER },
+                        intuneReadyCount: { type: Type.INTEGER },
                     },
-                    required: ["totalGpos", "highSeverityConflicts", "mediumSeverityConflicts", "overlaps", "consolidationOpportunities", "securityAlerts"]
+                    required: ["totalGpos", "highSeverityConflicts", "mediumSeverityConflicts", "overlaps", "consolidationOpportunities", "securityAlerts", "intuneReadyCount"]
                 },
                 findings: {
                     type: Type.ARRAY,
@@ -75,9 +91,6 @@ const analysisSchema = {
                             setting: { type: Type.STRING },
                             recommendation: { type: Type.STRING },
                             severity: { type: Type.STRING },
-                            resolutionScript: { type: Type.STRING },
-                            manualSteps: { type: Type.STRING },
-                            documentation: docSchema,
                             policies: {
                                 type: Type.ARRAY,
                                 items: {
@@ -92,37 +105,7 @@ const analysisSchema = {
                                 }
                             }
                         },
-                        required: ["type", "setting", "recommendation", "policies", "documentation"],
-                    }
-                },
-                consolidation: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            recommendation: { type: Type.STRING },
-                            mergeCandidates: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            reason: { type: Type.STRING },
-                            manualSteps: { type: Type.STRING },
-                            documentation: docSchema
-                        },
-                        required: ["recommendation", "mergeCandidates", "reason", "documentation"],
-                    }
-                },
-                securityRecommendations: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            setting: { type: Type.STRING },
-                            currentConfiguration: { type: Type.STRING },
-                            recommendedConfiguration: { type: Type.STRING },
-                            severity: { type: Type.STRING, enum: ["Critical", "High", "Medium", "Low"] },
-                            rationale: { type: Type.STRING },
-                            gpoName: { type: Type.STRING },
-                            manualSteps: { type: Type.STRING }
-                        },
-                        required: ["setting", "currentConfiguration", "recommendedConfiguration", "severity", "rationale", "gpoName"]
+                        required: ["type", "setting", "recommendation", "policies"],
                     }
                 },
                 gpoDetails: {
@@ -132,8 +115,8 @@ const analysisSchema = {
                         properties: {
                             name: { type: Type.STRING },
                             linkedOUs: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            securityFiltering: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            delegation: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            intuneReady: { type: Type.BOOLEAN },
+                            performanceImpact: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
                             configuredSettings: {
                                 type: Type.ARRAY,
                                 items: {
@@ -141,210 +124,171 @@ const analysisSchema = {
                                     properties: {
                                         name: { type: Type.STRING },
                                         value: { type: Type.STRING },
-                                        policyType: { type: Type.STRING }
+                                        policyType: { type: Type.STRING, enum: ['User', 'Computer'] }
                                     }
                                 }
                             }
                         },
                         required: ["name", "linkedOUs"]
                     }
-                },
-                powershellScript: { type: Type.STRING }
+                }
             },
-            required: ["summary", "stats", "findings", "gpoDetails", "powershellScript"],
+            required: ["summary", "roadmap", "stats", "findings", "gpoDetails"],
         },
     },
     required: ["analysis"],
 };
 
-const orgSchema = {
-    type: Type.OBJECT,
-    properties: {
-        organization: {
-            type: Type.OBJECT,
-            properties: {
-                summary: { type: Type.STRING },
-                entropyScore: { type: Type.INTEGER },
-                remediationScript: { type: Type.STRING },
-                classifications: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            gpoName: { type: Type.STRING },
-                            type: { type: Type.STRING, enum: ["User", "Computer", "Mixed"] },
-                            primaryCategory: { type: Type.STRING },
-                            reason: { type: Type.STRING },
-                            documentation: docSchema
-                        },
-                        required: ["gpoName", "type", "primaryCategory", "documentation"]
-                    }
-                },
-                recommendations: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            groupName: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                            suggestedGpos: { type: Type.ARRAY, items: { type: Type.STRING } },
-                            reason: { type: Type.STRING },
-                            type: { type: Type.STRING, enum: ["User", "Computer", "Mixed"] }
-                        },
-                        required: ["groupName", "suggestedGpos", "type"]
-                    }
-                }
-            },
-            required: ["summary", "classifications", "recommendations"]
-        }
-    },
-    required: ["organization"]
-};
-
-const performCall = async (prompt: string, schema: any, configOverrides: any = {}, retryCount = 0): Promise<any> => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey });
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview",
-            contents: prompt,
-            config: { 
-                responseMimeType: "application/json", 
-                responseSchema: schema,
-                maxOutputTokens: 8192,
-                thinkingConfig: { thinkingBudget: 4096 },
-                ...configOverrides 
-            },
-        });
-
-        const text = response.text;
-        if (!text) {
-            const reason = response.candidates?.[0]?.finishReason || 'Unknown';
-            throw new Error(`Intelligence stream disconnected. Finish Reason: ${reason}`);
-        }
-
-        try {
-            return JSON.parse(text.trim());
-        } catch (jsonError) {
-            throw new Error("Received malformed or truncated intelligence response.");
-        }
-    } catch (error: any) {
-        if (retryCount < MAX_RETRIES && (error.message?.includes('429') || error.message?.includes('JSON'))) {
-            await sleep(INITIAL_RETRY_DELAY * (retryCount + 1));
-            return performCall(prompt, schema, configOverrides, retryCount + 1);
-        }
-        throw error;
-    }
-};
-
-const callApi = async (prompt: string, schema: any, configOverrides: any = {}): Promise<any> => {
-    const isPro = window.aistudio?.hasSelectedApiKey ? await window.aistudio.hasSelectedApiKey() : false;
-    return new Promise((resolve, reject) => {
-        apiRequestQueue = apiRequestQueue.then(async () => {
-            const timeSinceLast = Date.now() - lastRequestEndTime;
-            if (!isPro && timeSinceLast < FREE_TIER_GAP_MS) {
-                await sleep(FREE_TIER_GAP_MS - timeSinceLast);
-            }
-            try {
-                const result = await performCall(prompt, schema, configOverrides);
-                lastRequestEndTime = Date.now();
-                resolve(result);
-            } catch (err) {
-                lastRequestEndTime = Date.now();
-                reject(err);
-            }
-        });
-    });
-};
-
 export const generateGpoScriptAndAnalysis = async (
-    data: { baseGpo?: string; comparisonGpos: string[]; priorities: PriorityItem[] },
-    setProgress: (p: ProgressState) => void,
-    onPartialResult: (p: Analysis) => void
+    gpoData: { baseGpo?: string; comparisonGpos: string[] },
+    onProgress: (progress: ProgressState) => void,
+    onPartialResult: (partialAnalysis: Analysis) => void,
+    onLog?: (log: LogEntry) => void
 ): Promise<AnalysisResponse> => {
-    const totalBatches = Math.ceil(data.comparisonGpos.length / BATCH_SIZE);
-    let combinedAnalysis: Analysis | null = null;
-    let finalScript = "";
+    const timestamp = () => new Date().toLocaleTimeString([], { hour12: false });
+    const log = (message: string, type: LogEntry['type'] = 'info') => {
+        if (onLog) onLog({ timestamp: timestamp(), message, type });
+    };
+
+    const perfStr = localStorage.getItem('gpo_perf_config');
+    const perfConfig: PerformanceConfig = perfStr ? JSON.parse(perfStr) : { highMemoryMode: false };
     
-    // Convert priorities to a descriptive string for the system prompt
-    const priorityStrings = data.priorities.map((p, i) => `${i + 1}. ${p}`).join(', ');
+    // Turbo Mode Tuning
+    const CHUNK_SIZE = perfConfig.highMemoryMode ? 8 : 3; 
+    const CONCURRENCY_LIMIT = perfConfig.highMemoryMode ? 3 : 1;
 
-    for (let i = 0; i < totalBatches; i++) {
-        setProgress({ stage: `Analyzing Segment ${i + 1}/${totalBatches}`, current: i + 1, total: totalBatches });
-        
-        const isOneToAll = !!data.baseGpo;
-        const systemInstruction = `You are a Tier-3 Active Directory Forensic Engineer. 
-        MISSION: Optimize GPO count and identify baseline deviations.
-        USER ANALYSIS PRIORITIES (Ordered by Weight): ${priorityStrings}.
-        
-        CRITICAL INSTRUCTION: For every finding (Conflict, Overlap, Consolidation), you MUST generate a "documentation" block with:
-        - rationale: Technical justification.
-        - painPoint: Specific performance or security risk identified.
-        - impact: Positive result of resolution.
-        - technicalBrief: A professional summary for project documentation.
-        - suggestedName & classification: Only for consolidation/migration items.
-        
-        Ensure documentation is professional, technical, and ready for an executive report.`;
-
-        const batch = data.comparisonGpos.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
-        const prompt = `Batch ${i + 1}/${totalBatches}. ${isOneToAll ? '1-to-All Comparison vs Baseline.' : 'Cluster Audit.'}
-        ${isOneToAll ? `BASELINE:\n${stripGpoContent(data.baseGpo!)}\n` : ''}
-        COMPARISON DATA:\n${batch.map(stripGpoContent).join('\n')}`;
-        
-        const res = await callApi(prompt, analysisSchema, { systemInstruction });
-        onPartialResult(res.analysis);
-        
-        if (!combinedAnalysis) {
-            combinedAnalysis = res.analysis;
-            finalScript = res.analysis.powershellScript;
-        } else {
-            // Aggregate Statistics
-            combinedAnalysis.stats.totalGpos += res.analysis.stats.totalGpos;
-            combinedAnalysis.stats.highSeverityConflicts += res.analysis.stats.highSeverityConflicts;
-            combinedAnalysis.stats.mediumSeverityConflicts += res.analysis.stats.mediumSeverityConflicts;
-            combinedAnalysis.stats.overlaps += res.analysis.stats.overlaps;
-            combinedAnalysis.stats.consolidationOpportunities += res.analysis.stats.consolidationOpportunities;
-            combinedAnalysis.stats.securityAlerts += (res.analysis.stats.securityAlerts || 0);
-
-            // Merge findings and details
-            combinedAnalysis.findings = [...combinedAnalysis.findings, ...res.analysis.findings];
-            combinedAnalysis.gpoDetails = [...combinedAnalysis.gpoDetails, ...res.analysis.gpoDetails];
-            
-            if (res.analysis.consolidation) {
-                combinedAnalysis.consolidation = [...(combinedAnalysis.consolidation || []), ...res.analysis.consolidation];
-            }
-            if (res.analysis.securityRecommendations) {
-                combinedAnalysis.securityRecommendations = [...(combinedAnalysis.securityRecommendations || []), ...res.analysis.securityRecommendations];
-            }
-            combinedAnalysis.summary += ` | Batch ${i+1}: ${res.analysis.summary}`;
-        }
+    onProgress({ stage: 'Forensic Initialization...', current: 0, total: 3 });
+    log(`Initializing Multi-Threaded Forensic Scan [Capacity: ${perfConfig.highMemoryMode ? '64GB' : '8GB'}]...`);
+    
+    const gpoChunks: string[][] = [];
+    for (let i = 0; i < gpoData.comparisonGpos.length; i += CHUNK_SIZE) {
+        gpoChunks.push(gpoData.comparisonGpos.slice(i, i + CHUNK_SIZE));
     }
-    
-    // Final check: Use the actual data length for totalGpos to ensure accuracy if the LLM hallucinated its batch size
-    if (combinedAnalysis) {
-        const totalActualGpos = (data.baseGpo ? 1 : 0) + data.comparisonGpos.length;
-        combinedAnalysis.stats.totalGpos = totalActualGpos;
+
+    const aggregatedDetails: any[] = [];
+    const aggregatedFindings: any[] = [];
+    const aggregatedRoadmap = { phase1: [] as any[], phase2: [] as any[], phase3: [] as any[] };
+    const intermediateSummaries: string[] = [];
+    let processedChunks = 0;
+    let finalStats = { totalGpos: 0, highSeverityConflicts: 0, mediumSeverityConflicts: 0, overlaps: 0, consolidationOpportunities: 0, securityAlerts: 0, intuneReadyCount: 0 };
+
+    // Process chunks in groups to manage concurrency
+    for (let i = 0; i < gpoChunks.length; i += CONCURRENCY_LIMIT) {
+        const batch = gpoChunks.slice(i, i + CONCURRENCY_LIMIT);
+        log(`Firing Forensic Threads ${i + 1} through ${Math.min(i + CONCURRENCY_LIMIT, gpoChunks.length)}...`, 'info');
+        
+        const batchPromises = batch.map(async (chunk, batchIdx) => {
+            const chunkId = i + batchIdx + 1;
+            const chunkPrompt = `
+                Perform Deep Phase-Aware Analysis on these policies:
+                ${chunk.join('\n\n--- NEXT ---\n\n')}
+            `;
+
+            try {
+                const result = await callApiWithRetry(chunkPrompt, analysisSchema);
+                const subAnalysis = result.analysis;
+
+                // Sync critical data
+                aggregatedDetails.push(...subAnalysis.gpoDetails);
+                aggregatedFindings.push(...subAnalysis.findings);
+                aggregatedRoadmap.phase1.push(...subAnalysis.roadmap.phase1);
+                aggregatedRoadmap.phase2.push(...subAnalysis.roadmap.phase2);
+                aggregatedRoadmap.phase3.push(...subAnalysis.roadmap.phase3);
+                intermediateSummaries.push(subAnalysis.summary);
+                
+                finalStats.totalGpos += subAnalysis.stats.totalGpos;
+                finalStats.highSeverityConflicts += subAnalysis.stats.highSeverityConflicts;
+                finalStats.mediumSeverityConflicts += subAnalysis.stats.mediumSeverityConflicts;
+                finalStats.overlaps += subAnalysis.stats.overlaps;
+                finalStats.securityAlerts += subAnalysis.stats.securityAlerts;
+                finalStats.intuneReadyCount += subAnalysis.stats.intuneReadyCount;
+                finalStats.consolidationOpportunities += subAnalysis.roadmap.phase1.filter((a: any) => a.actionType === 'Merge/Consolidate').length;
+
+                processedChunks++;
+                log(`Thread ${chunkId} finalized: ${chunk.length} policies ingested.`, 'success');
+                onProgress({ stage: `Payload Group ${processedChunks}/${gpoChunks.length} Locked`, current: processedChunks, total: gpoChunks.length + 1 });
+            } catch (e: any) {
+                log(`Thread ${chunkId} CRITICAL FAILURE`, 'error');
+                throw e;
+            }
+        });
+
+        await Promise.all(batchPromises);
+        // Minimal cooldown to prevent API flooding even in Turbo
+        if (i + CONCURRENCY_LIMIT < gpoChunks.length) await wait(perfConfig.highMemoryMode ? 500 : 2000);
     }
+
+    onProgress({ stage: 'Synthesizing Strategic Summary...', current: gpoChunks.length, total: gpoChunks.length + 1 });
+    log("Synthesizing coherent executive roadmap from all threads...");
     
-    return { analysis: combinedAnalysis!, script: finalScript };
+    const synthesisPrompt = `
+        You are an Enterprise GPO Architect. Synthesis these partial summaries into one final, professional, cohesive executive summary for a GPO modernization project. 
+        Focus on the project deadline (end of February) and the 3-phase plan. 
+        Summaries to synthesize:
+        ${intermediateSummaries.join('\n\n')}
+    `;
+    
+    const synthesisResult = await callApiWithRetry(synthesisPrompt, {
+        type: Type.OBJECT,
+        properties: { summary: { type: Type.STRING } },
+        required: ["summary"]
+    });
+
+    onProgress({ stage: 'Compiling Global Script...', current: gpoChunks.length + 0.5, total: gpoChunks.length + 1 });
+    const scriptResult = await callApiWithRetry(`Generate a powershell script to audit and export these GPOs: ${aggregatedDetails.map(d => d.name).join(', ')}`, {
+        type: Type.OBJECT,
+        properties: { script: { type: Type.STRING } },
+        required: ["script"]
+    });
+
+    return {
+        analysis: {
+            summary: synthesisResult.summary,
+            roadmap: aggregatedRoadmap,
+            stats: finalStats,
+            findings: aggregatedFindings,
+            gpoDetails: aggregatedDetails
+        },
+        script: scriptResult.script.replace(/^```powershell\n/i, '').replace(/\n```$/, '')
+    };
 };
 
-export const generateConsolidatedGpo = async (gpoContents: string[], newGpoName: string): Promise<ConsolidationResult> => {
-    const prompt = `Perform deep merge compatibility research for '${newGpoName}'. DATA:\n${gpoContents.map(stripGpoContent).join('\n')}`;
-    return await callApi(prompt, analysisSchema as any); 
-};
+export const generateConsolidatedGpo = async (
+    gpoReports: string[],
+    newGpoName: string,
+    onProgress: (progress: ProgressState) => void,
+    onLog?: (log: LogEntry) => void
+): Promise<ConsolidationResult> => {
+    const timestamp = () => new Date().toLocaleTimeString([], { hour12: false });
+    const log = (message: string, type: LogEntry['type'] = 'info') => {
+        if (onLog) onLog({ timestamp: timestamp(), message, type });
+    };
 
-export const generateOrganizationAnalysis = async (gpoContents: string[], priorities: PriorityItem[], setProgress: (p: ProgressState) => void): Promise<OrganizationAnalysis> => {
-    setProgress({ stage: 'Logical Structural Mapping', current: 1, total: 1 });
-    const priorityStrings = priorities.map((p, i) => `${i + 1}. ${p}`).join(', ');
-    
-    const systemInstruction = `You are an AD Forest Architect. Map forest functional logic.
-    USER PRIORITIES: ${priorityStrings}. 
-    Focus on minimizing GPO count and strict User/Computer separation.
-    For every classification (especially MIXED types), generate professional documentation including painPoint, impact, and technicalBrief.`;
+    onProgress({ stage: 'Frontline Synthesis...', current: 1, total: 1 });
+    log(`Synthesizing Technology Master: "${newGpoName}"`);
 
-    const prompt = `Perform structural optimization. DATA:\n${gpoContents.map((c, i) => `GPO ${i+1}:\n${stripGpoContent(c)}`).join('\n')}`;
-    const result = await callApi(prompt, orgSchema, { systemInstruction });
-    return result.organization;
+    const result = await callApiWithRetry(`Merge these GPOs into a clean functional master: ${gpoReports.join('\n\n--- NEXT ---\n\n')}`, {
+        type: Type.OBJECT,
+        properties: {
+            gpoXml: { type: Type.STRING },
+            script: { type: Type.STRING },
+            mergeReport: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: { type: Type.STRING },
+                    overwrittenSettings: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { settingName: { type: Type.STRING }, winningGpoName: { type: Type.STRING }, winningValue: { type: Type.STRING }, overwrittenGpoName: { type: Type.STRING }, overwrittenValue: { type: Type.STRING } } } },
+                    sourceMap: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { settingName: { type: Type.STRING }, sourceGpoName: { type: Type.STRING } } } },
+                    securityAnalysis: { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, securityFiltering: { type: Type.OBJECT, properties: { final: { type: Type.ARRAY, items: { type: Type.STRING } }, sourceDetails: { type: Type.ARRAY, items: { type: Type.STRING } } } }, delegation: { type: Type.OBJECT, properties: { final: { type: Type.ARRAY, items: { type: Type.STRING } }, sourceDetails: { type: Type.ARRAY, items: { type: Type.STRING } } } } } }
+                },
+                required: ["summary", "overwrittenSettings", "sourceMap", "securityAnalysis"]
+            }
+        },
+        required: ["gpoXml", "script", "mergeReport"]
+    });
+
+    return {
+        gpoXml: result.gpoXml,
+        script: result.script,
+        mergeReport: result.mergeReport
+    };
 };
